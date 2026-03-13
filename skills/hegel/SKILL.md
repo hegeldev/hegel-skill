@@ -48,18 +48,20 @@ Look for properties that are:
 
 Write one test per property. Don't cram multiple properties into one test.
 
-### 4. Check for Existing Tests to Evolve
+### 4. Check for Existing Tests to Evolve or Port
 
-Before writing tests from scratch, **always** check if existing unit tests or
-example-based tests can be evolved into property-based tests. Load
-`references/evolving-tests.md` for guidance.
+Before writing tests from scratch, **always** check existing tests:
 
-Specifically:
-
-- Look at every existing test file. Tests with hardcoded seeds, parameterized
-  examples, or multiple similar test cases are prime candidates.
-- Tests that use `rand` with fixed seeds are especially good candidates — the
-  randomness should come from hegel instead so failures produce shrinkable
+- **Existing PBTs in another framework** (proptest, quickcheck, etc.) should be
+  ported to hegel. Load `references/porting.md` for general guidance and the
+  language-specific porting reference (e.g., `references/porting-rust.md`).
+  Don't carry over narrow generator bounds from the old framework — use broader
+  generators unless bounds are justified by the function's contract.
+- **Unit tests and example-based tests** can often be evolved into PBTs. Load
+  `references/evolving-tests.md` for guidance. Tests with hardcoded seeds,
+  parameterized examples, or multiple similar test cases are prime candidates.
+- **Tests that use `rand` with fixed seeds** are especially good candidates —
+  the randomness should come from hegel instead so failures produce shrinkable
   counterexamples.
 
 When you evolve an existing test, **modify the existing test file** rather than
