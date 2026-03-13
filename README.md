@@ -4,11 +4,19 @@ A [Claude Code skill](https://docs.anthropic.com/en/docs/claude-code/skills) tha
 
 ## Installation
 
-Add to your Claude Code project settings (`.claude/settings.json`):
+Use as a plugin with Claude Code:
+
+```bash
+claude --plugin-dir path/to/hegel-skill
+```
+
+Or add to your project settings (`.claude/settings.json`):
 
 ```json
 {
-  "skills": ["path/to/hegel-skill"]
+  "enabledPlugins": {
+    "hegel-skill": true
+  }
 }
 ```
 

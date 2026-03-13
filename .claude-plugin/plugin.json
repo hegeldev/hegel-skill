@@ -1,0 +1,6 @@
+{
+  "name": "hegel-skill",
+  "description": "Teaches agents how to write property-based tests using Hegel",
+  "version": "0.1.0",
+  "license": "MIT"
+}
