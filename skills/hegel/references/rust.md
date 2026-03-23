@@ -601,6 +601,42 @@ fn test_reverse_preserves_elements(tc: hegel::TestCase) {
 }
 ```
 
+### Model-based testing (data structures)
+
+```rust
+use hegel::generators::{self, Generator};
+use std::collections::HashMap;
+
+#[hegel::test(test_cases = 1000)]
+fn test_my_map_model(tc: hegel::TestCase) {
+    let mut my_map = MyMap::new();
+    let mut model = HashMap::new();
+
+    let num_ops = tc.draw(generators::integers::<usize>().max_value(100));
+    for _ in 0..num_ops {
+        let op = tc.draw(generators::integers::<u8>().max_value(3));
+        match op {
+            0 => {
+                let k = tc.draw(generators::integers::<i32>());
+                let v = tc.draw(generators::integers::<i32>());
+                assert_eq!(my_map.insert(k, v), model.insert(k, v));
+            }
+            1 => {
+                let k = tc.draw(generators::integers::<i32>());
+                assert_eq!(my_map.remove(&k), model.remove(&k));
+            }
+            2 => {
+                let k = tc.draw(generators::integers::<i32>());
+                assert_eq!(my_map.get(&k), model.get(&k));
+            }
+            _ => {
+                assert_eq!(my_map.len(), model.len());
+            }
+        }
+    }
+}
+```
+
 ### Commutativity
 
 ```rust
@@ -613,6 +649,49 @@ fn test_set_union_commutes(tc: hegel::TestCase) {
     assert_eq!(a.union(&b).collect::<HashSet<_>>(),
                b.union(&a).collect::<HashSet<_>>());
 }
+```
+
+### Idempotence (normalization / case conversion)
+
+```rust
+use hegel::generators::{self, Generator};
+
+#[hegel::test(test_cases = 1000)]
+fn test_normalize_idempotent(tc: hegel::TestCase) {
+    let s: String = tc.draw(generators::text());  // full Unicode, not ASCII
+    let once = normalize(&s);
+    let twice = normalize(&once);
+    assert_eq!(once, twice, "not idempotent for {:?}", s);
+}
+```
+
+### Parse robustness
+
+```rust
+use hegel::generators::{self, Generator};
+
+#[hegel::test(test_cases = 1000)]
+fn test_parse_no_panic(tc: hegel::TestCase) {
+    let s: String = tc.draw(generators::text());
+    let _ = MyType::from_str(&s);  // should never panic, just return Err
+}
+```
+
+### Wrapping arithmetic in test values
+
+When computing test values from generated data, use wrapping operations to avoid
+panics in your *test* code:
+
+```rust
+// BAD — panics when k is near i32::MAX
+map.insert(k, k * 10);
+
+// GOOD — wrapping prevents test overflow
+map.insert(k, k.wrapping_mul(10));
+
+// ALSO GOOD — use smaller types for intermediate computation
+let k = tc.draw(generators::integers::<i16>()) as i32;
+let k_squared = k * k;  // can't overflow i32
 ```
 
 ### Testing code that uses randomness
@@ -695,3 +774,18 @@ fn test_sample_bad(tc: hegel::TestCase) {
 
 8. **`target()` is not yet available** in the Rust SDK. It is planned for a
    future release.
+
+9. **Default collection sizes are small.** `generators::vecs(gen)` with no
+   bounds rarely produces 100+ elements. If you need large collections (e.g.,
+   to test tree traversal at depth), draw the size separately:
+   ```rust
+   let n = tc.draw(generators::integers::<usize>().max_value(300));
+   let keys: Vec<i32> = tc.draw(generators::vecs(generators::integers()).min_size(n));
+   ```
+
+10. **Use `.unique()` for map/set key generation.** When testing ordered maps
+    or sets, generate unique keys to avoid ambiguity about which value wins:
+    ```rust
+    let keys: Vec<i32> = tc.draw(generators::vecs(generators::integers::<i32>())
+        .max_size(50).unique());
+    ```

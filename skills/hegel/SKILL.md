@@ -111,6 +111,55 @@ function — pick the ones supported by evidence.
 | **No-crash / robustness** | function handles all valid inputs without panicking | `parse(arbitrary_string)` doesn't panic |
 | **Equivalence** | two implementations produce the same result | `iterative_fib(n) == recursive_fib(n)` |
 | **Model-based** | operations on real system match a simplified model | `HashMap ops match Vec<(K,V)> model` |
+| **Consistency** | related APIs in the same library agree | `string_width(s) == sum(char_width(c) for c in s)` |
+| **Precision preservation** | numeric values survive format conversions | `parse(to_string(n)) == n` for all `i64` |
+
+## High-Value Patterns (Field-Tested)
+
+These patterns are ranked by how often they found real bugs when tested across
+many popular Rust crate libraries. See `references/field-tested-patterns.md`
+for detailed examples.
+
+### 1. Model Tests (Highest Value for Data Structures)
+
+For any data structure, the highest-value first test is a **model test** — run
+the same operations on the library under test and a known-good reference (usually
+a std type), then assert they agree after every operation.
+
+Choose the right oracle:
+- `Vec` for sequential containers (fixed-capacity vecs, small vecs)
+- `HashMap` for hash maps (alternative/concurrent hash maps)
+- `BTreeMap` for ordered maps (tree maps, persistent maps)
+- `BTreeSet` for ordered sets / bitmaps (compressed bitmaps, tree sets)
+- `HashSet` for unordered sets (indexed sets, bit sets)
+
+### 2. Idempotence Tests (Highest Value for String/Text Processing)
+
+Any normalization, case conversion, or formatting function should be idempotent:
+`f(f(x)) == f(x)`. Use `generators::text()` (not ASCII-only generators) because
+Unicode edge cases like `ß` → `SS` and combining characters are where bugs hide.
+
+### 3. Parse Robustness (Universal — Test Every Parser)
+
+Every `from_str`, `parse`, or `decode` function should be tested with
+`generators::text()`. The property is simple: it should never panic. Parsers
+that delegate to constructors which panic on invalid values (instead of returning
+errors) are a common source of bugs.
+
+### 4. Roundtrip Tests (High Value for Serialization)
+
+`parse(format(x)) == x` for any serialize/deserialize pair. Test with the full
+input domain — don't restrict to "reasonable" values. Bugs hide at boundaries
+like zero (e.g. scientific notation missing the coefficient), large integers
+(precision loss through f64 intermediaries for values > 2^53), and unusual
+string content (double slashes in paths, control characters).
+
+### 5. Boundary Value Tests (High Value for Numeric Code)
+
+Integer operations should be tested with `MIN`, `MAX`, `0`, and unconstrained
+ranges. Negating `i32::MIN` overflows, dividing by `i64::MIN` overflows, and
+many libraries forget to handle these. Don't add `.min_value(-100).max_value(100)`
+— those bounds hide real bugs.
 
 ## Choosing Properties
 
@@ -123,6 +172,17 @@ Properties must be **evidence-based**. Find evidence in:
 - **Existing tests**: Unit tests often encode specific instances of general properties.
 
 Err on the side of creating more properties rather than fewer, and if they fail investigate whether the failure is legitimate behaviour or not.
+
+**Beware of properties that seem universal but aren't.** Read the docs carefully
+before asserting a property. Examples from real testing:
+- Grapheme-based string reverse is NOT an involution (`reverse(reverse("\n\r"))
+  ≠ "\n\r"` because `\r\n` is one grapheme cluster while `\n\r` is two).
+- A method called `difference` might mean symmetric difference (A △ B), not set
+  difference (A \ B) — check the docs.
+- A function documented as "returns the largest key ≤ k" means ≤, not <.
+
+When a property fails, investigate whether it's a real bug or a genuine edge case
+in the domain. A weaker property often still holds.
 
 ## Generator Discipline
 
@@ -209,6 +269,36 @@ It is particularly important to avoid rejection sampling in cases where the reje
 
 For example `st.integers().map(|n| n * 2)` is much better than `st.integers().filter(|n| n % 2 == 0)`, as the former constructs an even number directly, while the latter throws away around 50% of test cases.
 
+### Getting Large Collections
+
+Hegel's default collection size is small. If you need large collections (e.g.,
+to exercise deep tree paths), draw the size separately and pass it as `min_size`:
+
+```rust
+// GOOD — can generate large collections, shrinks well
+let n = tc.draw(generators::integers::<usize>().max_value(300));
+let keys: Vec<i32> = tc.draw(generators::vecs(generators::integers())
+    .min_size(n));  // no max_size — let hegel go bigger if it wants
+
+// BAD — hegel's default size distribution rarely produces 100+ elements
+let keys: Vec<i32> = tc.draw(generators::vecs(generators::integers()));
+```
+
+Setting `min_size` but *not* `max_size` is a shrinking optimization: hegel can
+shrink `n` to find the minimal collection size that triggers the bug, while
+still being able to add extra elements if needed.
+
+### Use `.unique()` for Key Generation
+
+When testing maps/sets that need unique keys:
+
+```rust
+let keys: Vec<i32> = tc.draw(generators::vecs(generators::integers::<i32>())
+    .max_size(30).unique());
+```
+
+This avoids confusion about which value wins for duplicate keys.
+
 ## Handling Randomness in Code Under Test
 
 When the code under test requires an RNG (e.g., `fn sample(&self, rng: &mut impl Rng)`),
@@ -263,6 +353,8 @@ to the user.
 4. **Generating too broadly then filtering almost everything** — If `.filter()` or `tc.assume()` rejects most inputs, Hegel will give up. Restructure your generators instead (e.g., use `.map()` or dependent generation).
 5. **Creating a separate test file for hegel tests** — Property-based tests belong alongside the existing tests for the same code. Don't put them in `test_hegel.rs` or `test_properties.rs` — add them to the existing test files.
 6. **Using manually seeded RNGs** — Don't generate a seed with hegel then create `ChaCha8Rng::seed_from_u64(seed)`. Use `generators::randoms()` with the `rand` feature so hegel controls the random decisions and can shrink them. See "Handling Randomness" above.
+7. **Overflowing in test code** — When computing values from generated data (e.g., `map.insert(k, k * 10)`), your test code itself can overflow before the library has a chance to be buggy. Use wrapping arithmetic (`k.wrapping_mul(10)`) or smaller intermediate types (draw `i16`, cast to `i32` for multiplication) to prevent this. Distinguish "this constraint protects the library's contract" (keep it) from "this constraint prevents my test from overflowing" (use wrapping arithmetic instead).
+8. **Adding `.max_size()` for performance** — If a test is slow with large collections, lower `test_cases` rather than restricting the input space. A slow test that finds bugs beats a fast test that can't. Many tree/trie bugs only manifest at 50-200+ elements.
 
 ## Quick Setup
 
