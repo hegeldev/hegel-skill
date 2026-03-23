@@ -117,8 +117,8 @@ function — pick the ones supported by evidence.
 ## High-Value Patterns (Field-Tested)
 
 These patterns are ranked by how often they found real bugs when tested across
-120+ Rust crate libraries (13 bugs found). See `references/field-tested-patterns.md`
-for detailed examples and bug descriptions.
+many popular Rust crate libraries. See `references/field-tested-patterns.md`
+for detailed examples.
 
 ### 1. Model Tests (Highest Value for Data Structures)
 
@@ -127,11 +127,11 @@ the same operations on the library under test and a known-good reference (usuall
 a std type), then assert they agree after every operation.
 
 Choose the right oracle:
-- `Vec` for sequential containers (SmallVec, TinyVec, etc.)
-- `HashMap` for hash maps (AHashMap, IndexMap, DashMap, etc.)
-- `BTreeMap` for ordered maps (im::OrdMap, rpds::RedBlackTreeMap)
-- `BTreeSet` for ordered sets / bitmaps (RoaringBitmap, im::OrdSet)
-- `HashSet` for unordered sets (IndexSet, BitSet)
+- `Vec` for sequential containers (fixed-capacity vecs, small vecs)
+- `HashMap` for hash maps (alternative/concurrent hash maps)
+- `BTreeMap` for ordered maps (tree maps, persistent maps)
+- `BTreeSet` for ordered sets / bitmaps (compressed bitmaps, tree sets)
+- `HashSet` for unordered sets (indexed sets, bit sets)
 
 ### 2. Idempotence Tests (Highest Value for String/Text Processing)
 
@@ -142,15 +142,17 @@ Unicode edge cases like `ß` → `SS` and combining characters are where bugs hi
 ### 3. Parse Robustness (Universal — Test Every Parser)
 
 Every `from_str`, `parse`, or `decode` function should be tested with
-`generators::text()`. The property is simple: it should never panic. This found
-bugs where parsers delegated to constructors that panic instead of returning errors.
+`generators::text()`. The property is simple: it should never panic. Parsers
+that delegate to constructors which panic on invalid values (instead of returning
+errors) are a common source of bugs.
 
 ### 4. Roundtrip Tests (High Value for Serialization)
 
 `parse(format(x)) == x` for any serialize/deserialize pair. Test with the full
 input domain — don't restrict to "reasonable" values. Bugs hide at boundaries
-like zero (scientific notation `"e0"` instead of `"0e0"`) and large integers
-(precision loss through f64 intermediaries for values > 2^53).
+like zero (e.g. scientific notation missing the coefficient), large integers
+(precision loss through f64 intermediaries for values > 2^53), and unusual
+string content (double slashes in paths, control characters).
 
 ### 5. Boundary Value Tests (High Value for Numeric Code)
 
@@ -175,7 +177,8 @@ Err on the side of creating more properties rather than fewer, and if they fail 
 before asserting a property. Examples from real testing:
 - Grapheme-based string reverse is NOT an involution (`reverse(reverse("\n\r"))
   ≠ "\n\r"` because `\r\n` is one grapheme cluster while `\n\r` is two).
-- `im::difference` means symmetric difference (A △ B), not set difference (A \ B).
+- A method called `difference` might mean symmetric difference (A △ B), not set
+  difference (A \ B) — check the docs.
 - A function documented as "returns the largest key ≤ k" means ≤, not <.
 
 When a property fails, investigate whether it's a real bug or a genuine edge case
