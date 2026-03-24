@@ -1,0 +1,8 @@
+{
+  "plugins": [
+    {
+      "name": "hegel-skill",
+      "source": "."
+    }
+  ]
+}
