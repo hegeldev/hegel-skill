@@ -2,19 +2,20 @@
 
 ## Setup
 
-Add to `Cargo.toml`:
+Install via cargo:
 
-```toml
-[dev-dependencies]
-hegel = { git = "https://github.com/hegeldev/hegel-rust" }
+```bash
+cargo add --dev hegeltest
 ```
+
+The crate is published as `hegeltest` on crates.io but the library is imported
+as `hegel` (i.e. `use hegel::TestCase`).
 
 If the code under test uses `rand` and you need hegel-controlled RNG instances,
 enable the `rand` feature:
 
-```toml
-[dev-dependencies]
-hegel = { git = "https://github.com/hegeldev/hegel-rust", features = ["rand"] }
+```bash
+cargo add --dev hegeltest --features rand
 ```
 
 Requires [`uv`](https://github.com/astral-sh/uv) installed and on PATH.
@@ -27,12 +28,13 @@ Run tests with `cargo test`. Hegel tests use `#[hegel::test]` in place of
 ### `#[hegel::test]` (preferred)
 
 ```rust
-use hegel::generators::{self, Generator};
+use hegel::generators as gs;
+use hegel::generators::Generator;
 
 #[hegel::test]
 fn test_addition_commutes(tc: hegel::TestCase) {
-    let a = tc.draw(generators::integers::<i64>());
-    let b = tc.draw(generators::integers::<i64>());
+    let a = tc.draw(gs::integers::<i64>());
+    let b = tc.draw(gs::integers::<i64>());
     assert_eq!(a.wrapping_add(b), b.wrapping_add(a));
 }
 ```
@@ -142,11 +144,13 @@ fn test_division(tc: hegel::TestCase) {
 All generators are in the `hegel::generators` module. Import with:
 
 ```rust
-use hegel::generators::{self, Generator};
+use hegel::generators as gs;
+use hegel::generators::Generator;
 ```
 
-The `Generator` trait import is needed for combinator methods (`.map()`,
-`.filter()`, `.flat_map()`, `.boxed()`).
+The `gs` alias is the recommended import style. The `Generator` trait import
+is needed for combinator methods (`.map()`, `.filter()`, `.flat_map()`,
+`.boxed()`).
 
 ### Numeric Generators
 
@@ -302,13 +306,28 @@ let maybe: Option<i32> = tc.draw(
 ```rust
 let email: String = tc.draw(generators::emails());
 let url: String = tc.draw(generators::urls());
-let domain: String = tc.draw(generators::domains().with_max_length(50));
+let domain: String = tc.draw(generators::domains().max_length(50));
 let date: String = tc.draw(generators::dates());        // YYYY-MM-DD
 let time: String = tc.draw(generators::times());         // HH:MM:SS
 let dt: String = tc.draw(generators::datetimes());
 let ipv4: String = tc.draw(generators::ip_addresses().v4());
 let ipv6: String = tc.draw(generators::ip_addresses().v6());
 ```
+
+### Duration Generator
+
+```rust
+use std::time::Duration;
+
+let d: Duration = tc.draw(generators::durations());
+let bounded: Duration = tc.draw(generators::durations()
+    .min_value(Duration::from_secs(1))
+    .max_value(Duration::from_secs(60)));
+```
+
+Config methods:
+- `.min_value(Duration)` — Inclusive lower bound
+- `.max_value(Duration)` — Inclusive upper bound
 
 ### Regex Generator
 
@@ -322,7 +341,7 @@ let code: String = tc.draw(
 ### Random Generator (requires `rand` feature)
 
 ```rust
-// Cargo.toml: hegel = { ..., features = ["rand"] }
+// Cargo.toml: cargo add --dev hegeltest --features rand
 
 // Default: artificial randomness — every random decision is shrinkable
 let mut rng = tc.draw(generators::randoms());
@@ -883,7 +902,7 @@ impl IntegerStack {
     }
 
     #[invariant]
-    fn length_nonnegative(&self, _: TestCase) {
+    fn length_nonnegative(&mut self, _: TestCase) {
         assert!(self.stack.len() < 100, "stack too large");
     }
 }
@@ -899,7 +918,9 @@ fn test_integer_stack(tc: TestCase) {
   and `TestCase`. Use `tc.assume()` to skip a rule when it doesn't apply
   (e.g., can't pop from an empty stack).
 - **`#[invariant]`** methods are checked after every successful rule. They take
-  `&self` and `TestCase`.
+  `&mut self` and `TestCase`. Attributes on `#[rule]` and `#[invariant]`
+  methods are forwarded (e.g. `#[cfg(feature = "...")]`).
+- State machines support lifetime and type parameters on the `impl` block.
 - Call `hegel::stateful::run(machine, tc)` from a `#[hegel::test]` to execute.
 
 ### Variables (Pools)

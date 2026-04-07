@@ -360,17 +360,17 @@ to the user.
 
 ### Rust
 
-```toml
-# Cargo.toml
-[dev-dependencies]
-hegel = { git = "https://github.com/hegeldev/hegel-rust" }
+```bash
+cargo add --dev hegeltest
 ```
 
 If the code under test uses `rand`:
 
-```toml
-[dev-dependencies]
-hegel = { git = "https://github.com/hegeldev/hegel-rust", features = ["rand"] }
+```bash
+cargo add --dev hegeltest --features rand
 ```
+
+The crate is `hegeltest` on crates.io but the library is imported as `hegel`
+(i.e. `use hegel::TestCase`).
 
 Requires [`uv`](https://github.com/astral-sh/uv) on PATH. Run with `cargo test`.
