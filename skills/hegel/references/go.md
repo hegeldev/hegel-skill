@@ -571,8 +571,8 @@ func TestSeekLargeValues(t *testing.T) {
     caching the server binary and storing the failure database.
 
 12. **`hegel.T` satisfies `testing.TB`.** You can pass `ht` to helper
-    functions that accept `testing.TB` or `*testing.T` (via the embedded
-    field).
+    functions that accept `testing.TB`. For functions that require
+    `*testing.T` specifically, use `ht.T` to access the embedded field.
 
 ## Configuration
 
@@ -588,3 +588,14 @@ func TestMain(m *testing.M) {
 ```
 
 Use this in `TestMain` if automatic project root detection fails.
+
+## Features Not Yet Available in Go
+
+The following features exist in the Rust SDK but are **not available** in Go:
+
+- **Stateful testing** (`#[hegel::state_machine]`, `Variables`, `stateful::run`)
+- **`.Unique()` on list generators** — deduplicate keys manually after generation
+- **`generators::randoms()`** — hegel-controlled RNG for testing code that uses randomness
+- **`#[hegel::composite]` / `compose!`** — build composite generators by combining `FlatMap`, `Map`, and helper functions instead
+- **`draw_silent()`** — all draws in Go are silent (no `Debug` bound exists in Go)
+- **`derive(DefaultGenerator)` / `derive_generator!`** — no auto-derived generators for structs

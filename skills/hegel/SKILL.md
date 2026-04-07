@@ -26,7 +26,11 @@ Identify the project language from build files:
 | `Cargo.toml` | Rust | `references/rust.md` |
 | `go.mod` | Go | `references/go.md` |
 
-Load the corresponding reference file for API details and idiomatic patterns.
+Only Rust and Go are currently documented. Load the corresponding reference
+file for API details and idiomatic patterns. The examples below use Rust
+syntax; consult the language-specific reference for the equivalent API in
+other languages (e.g. Go uses `hegel.Draw(ht, hegel.Integers(min, max))`
+instead of `tc.draw(generators::integers::<i32>())`).
 
 ### 2. Explore the Code Under Test
 
@@ -190,15 +194,21 @@ in the domain. A weaker property often still holds.
 A common mistake agents make when writing property-based tests is **over-constraining generators**.
 This leads to tests that are weaker than they need to be.
 
-### Start With No Bounds
+### Start With the Widest Range
 
-If the function accepts any `i32`, use:
+If the function accepts any `i32`, use the full range of the type:
 
 ```rust
-generators::integers::<i32>()  // no min_value, no max_value
+// Rust — no bounds means full type range
+generators::integers::<i32>()
 ```
 
-Do NOT preemptively write:
+```go
+// Go — both bounds required, so use the full type range explicitly
+hegel.Integers[int32](math.MinInt32, math.MaxInt32)
+```
+
+Do NOT preemptively narrow the range:
 
 ```rust
 generators::integers::<i32>().min_value(0).max_value(100)  // WRONG unless justified
@@ -268,7 +278,7 @@ if (a > b) {
 
 It is particularly important to avoid rejection sampling in cases where the rejection rate is likely to be high.
 
-For example `st.integers().map(|n| n * 2)` is much better than `st.integers().filter(|n| n % 2 == 0)`, as the former constructs an even number directly, while the latter throws away around 50% of test cases.
+For example `generators::integers::<i32>().map(|n| n * 2)` is much better than `generators::integers::<i32>().filter(|n| n % 2 == 0)`, as the former constructs an even number directly, while the latter throws away around 50% of test cases.
 
 ### Getting Large Collections
 
@@ -289,7 +299,7 @@ Setting `min_size` but *not* `max_size` is a shrinking optimization: hegel can
 shrink `n` to find the minimal collection size that triggers the bug, while
 still being able to add extra elements if needed.
 
-### Use `.unique()` for Key Generation
+### Use `.unique()` for Key Generation (Rust only)
 
 When testing maps/sets that need unique keys:
 
@@ -298,17 +308,22 @@ let keys: Vec<i32> = tc.draw(generators::vecs(generators::integers::<i32>())
     .max_size(30).unique());
 ```
 
-This avoids confusion about which value wins for duplicate keys.
+This avoids confusion about which value wins for duplicate keys. In Go, which
+does not have a `.Unique()` method, generate keys into a map first or
+deduplicate after generation.
 
-## Handling Randomness in Code Under Test
+## Handling Randomness in Code Under Test (Rust)
+
+This section applies to Rust only. The Go SDK does not currently have a
+hegel-controlled RNG generator.
 
 When the code under test requires an RNG (e.g., `fn sample(&self, rng: &mut impl Rng)`),
 **do not** create a seeded RNG like `ChaCha8Rng::seed_from_u64(seed)` with a
 hegel-generated seed. This defeats shrinking — hegel can only shrink the seed
 integer, not the actual random decisions the RNG makes.
 
-Instead, use hegel's `rand` feature to get a hegel-controlled RNG. See the
-language-specific reference for API details.
+Instead, use hegel's `rand` feature to get a hegel-controlled RNG. See
+`references/rust.md` for API details.
 
 ### Rand version mismatch
 
@@ -349,13 +364,13 @@ to the user.
 ## Common Mistakes
 
 1. **Over-constraining generators** — Adding bounds "just in case." This hides bugs and makes tests less valuable. See Generator Discipline above.
-2. **Testing trivial properties** — `assert!(x == x)` or `assert!(vec.len() >= 0)` test nothing. Every property should be falsifiable by a buggy implementation.
+2. **Testing trivial properties** — `assert!(x == x)` or `assert(len(v) >= 0)` test nothing. Every property should be falsifiable by a buggy implementation.
 3. **Using the implementation as the oracle** — If your test calls the same function to compute the expected result, it can never fail. Use an independent reference implementation (do not just copy the code to write this!), a simpler algorithm, or a structural property.
-4. **Generating too broadly then filtering almost everything** — If `.filter()` or `tc.assume()` rejects most inputs, Hegel will give up. Restructure your generators instead (e.g., use `.map()` or dependent generation).
-5. **Creating a separate test file for hegel tests** — Property-based tests belong alongside the existing tests for the same code. Don't put them in `test_hegel.rs` or `test_properties.rs` — add them to the existing test files.
-6. **Using manually seeded RNGs** — Don't generate a seed with hegel then create `ChaCha8Rng::seed_from_u64(seed)`. Use `generators::randoms()` with the `rand` feature so hegel controls the random decisions and can shrink them. See "Handling Randomness" above.
-7. **Overflowing in test code** — When computing values from generated data (e.g., `map.insert(k, k * 10)`), your test code itself can overflow before the library has a chance to be buggy. Use wrapping arithmetic (`k.wrapping_mul(10)`) or smaller intermediate types (draw `i16`, cast to `i32` for multiplication) to prevent this. Distinguish "this constraint protects the library's contract" (keep it) from "this constraint prevents my test from overflowing" (use wrapping arithmetic instead).
-8. **Adding `.max_size()` for performance** — If a test is slow with large collections, lower `test_cases` rather than restricting the input space. A slow test that finds bugs beats a fast test that can't. Many tree/trie bugs only manifest at 50-200+ elements.
+4. **Generating too broadly then filtering almost everything** — If `Filter` or `Assume` rejects most inputs, Hegel will give up. Restructure your generators instead (e.g., use `Map` or dependent generation).
+5. **Creating a separate test file for hegel tests** — Property-based tests belong alongside the existing tests for the same code. Don't create a separate `test_hegel.rs` or `hegel_test.go` — add them to the existing test files.
+6. **Using manually seeded RNGs** (Rust) — Don't generate a seed with hegel then create `ChaCha8Rng::seed_from_u64(seed)`. Use `generators::randoms()` with the `rand` feature so hegel controls the random decisions and can shrink them. See "Handling Randomness" above.
+7. **Overflowing in test code** — When computing values from generated data (e.g., `map.insert(k, k * 10)`), your test code itself can overflow before the library has a chance to be buggy. In Rust, use wrapping arithmetic (`k.wrapping_mul(10)`) or smaller intermediate types (draw `i16`, cast to `i32` for multiplication). In Go, generate smaller types (e.g., `int16`) and widen before arithmetic. Distinguish "this constraint protects the library's contract" (keep it) from "this constraint prevents my test from overflowing" (use wrapping arithmetic instead).
+8. **Adding `.MaxSize()` for performance** — If a test is slow with large collections, lower `test_cases` rather than restricting the input space. A slow test that finds bugs beats a fast test that can't. Many tree/trie bugs only manifest at 50-200+ elements.
 
 ## Quick Setup
 
