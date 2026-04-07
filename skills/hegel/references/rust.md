@@ -18,8 +18,6 @@ enable the `rand` feature:
 cargo add --dev hegeltest --features rand
 ```
 
-Requires [`uv`](https://github.com/astral-sh/uv) installed and on PATH.
-
 Run tests with `cargo test`. Hegel tests use `#[hegel::test]` in place of
 `#[test]` and integrate directly with the standard Rust test runner.
 

@@ -374,7 +374,7 @@ cargo add --dev hegeltest --features rand
 The crate is `hegeltest` on crates.io but the library is imported as `hegel`
 (i.e. `use hegel::TestCase`).
 
-Requires [`uv`](https://github.com/astral-sh/uv) on PATH. Run with `cargo test`.
+Run with `cargo test`.
 
 ### Go
 
@@ -382,5 +382,4 @@ Requires [`uv`](https://github.com/astral-sh/uv) on PATH. Run with `cargo test`.
 go get -t hegel.dev/go/hegel@latest
 ```
 
-Requires Go 1.25+ and [`uv`](https://github.com/astral-sh/uv) on PATH. Run
-with `go test`.
+Requires Go 1.25+. Run with `go test`.

@@ -14,10 +14,7 @@ Import in your test files:
 import "hegel.dev/go/hegel"
 ```
 
-Requires Go 1.25+ and [`uv`](https://github.com/astral-sh/uv) installed and
-on PATH.
-
-Run tests with `go test`. Hegel tests use `hegel.Case()` with `t.Run()` and
+Requires Go 1.25+. Run tests with `go test`. Hegel tests use `hegel.Case()` with `t.Run()` and
 integrate directly with Go's standard test runner.
 
 ## Test Structure
