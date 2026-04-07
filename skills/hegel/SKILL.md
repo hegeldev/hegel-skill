@@ -24,6 +24,7 @@ Identify the project language from build files:
 | File | Language | Reference |
 |------|----------|-----------|
 | `Cargo.toml` | Rust | `references/rust.md` |
+| `go.mod` | Go | `references/go.md` |
 
 Load the corresponding reference file for API details and idiomatic patterns.
 
@@ -374,3 +375,12 @@ The crate is `hegeltest` on crates.io but the library is imported as `hegel`
 (i.e. `use hegel::TestCase`).
 
 Requires [`uv`](https://github.com/astral-sh/uv) on PATH. Run with `cargo test`.
+
+### Go
+
+```bash
+go get -t hegel.dev/go/hegel@latest
+```
+
+Requires Go 1.25+ and [`uv`](https://github.com/astral-sh/uv) on PATH. Run
+with `go test`.
