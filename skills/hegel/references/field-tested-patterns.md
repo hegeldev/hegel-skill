@@ -15,25 +15,25 @@ fn test_model(tc: hegel::TestCase) {
     let mut subject = MyMap::new();
     let mut model = std::collections::HashMap::new();
 
-    let num_ops = tc.draw(generators::integers::<usize>().max_value(100));
+    let num_ops = tc.draw(gs::integers::<usize>().max_value(100));
     for _ in 0..num_ops {
-        let op = tc.draw(generators::integers::<u8>().max_value(4));
+        let op = tc.draw(gs::integers::<u8>().max_value(4));
         match op {
             0 => {
-                let k = tc.draw(generators::integers::<i32>());
-                let v = tc.draw(generators::integers::<i32>());
+                let k = tc.draw(gs::integers::<i32>());
+                let v = tc.draw(gs::integers::<i32>());
                 assert_eq!(subject.insert(k, v), model.insert(k, v), "insert mismatch");
             }
             1 => {
-                let k = tc.draw(generators::integers::<i32>());
+                let k = tc.draw(gs::integers::<i32>());
                 assert_eq!(subject.remove(&k), model.remove(&k), "remove mismatch");
             }
             2 => {
-                let k = tc.draw(generators::integers::<i32>());
+                let k = tc.draw(gs::integers::<i32>());
                 assert_eq!(subject.get(&k), model.get(&k), "get mismatch");
             }
             3 => {
-                let k = tc.draw(generators::integers::<i32>());
+                let k = tc.draw(gs::integers::<i32>());
                 assert_eq!(subject.contains_key(&k), model.contains_key(&k));
             }
             _ => {
@@ -69,12 +69,12 @@ fn test_model(tc: hegel::TestCase) {
 ## Pattern 2: Idempotence Tests for String Processing
 
 Any normalization, case conversion, or formatting function should be idempotent.
-The critical ingredient is `generators::text()` — ASCII-only inputs miss the bugs.
+The critical ingredient is `gs::text()` — ASCII-only inputs miss the bugs.
 
 ```rust
 #[hegel::test(test_cases = 1000)]
 fn test_normalize_idempotent(tc: hegel::TestCase) {
-    let s: String = tc.draw(generators::text());
+    let s: String = tc.draw(gs::text());
     let once = normalize(&s);
     let twice = normalize(&once);
     assert_eq!(once, twice,
@@ -100,7 +100,7 @@ panicking — even invalid input. The property is simple:
 ```rust
 #[hegel::test(test_cases = 1000)]
 fn test_parse_robustness(tc: hegel::TestCase) {
-    let s: String = tc.draw(generators::text());
+    let s: String = tc.draw(gs::text());
     let _ = MyType::from_str(&s);  // Should never panic
 }
 ```
@@ -121,7 +121,7 @@ Test `parse(format(x)) == x` for any serialize/deserialize pair.
 ```rust
 #[hegel::test(test_cases = 1000)]
 fn test_display_parse_roundtrip(tc: hegel::TestCase) {
-    let v = tc.draw(generators::integers::<i64>());
+    let v = tc.draw(gs::integers::<i64>());
     let s = format!("{}", v);
     let parsed: i64 = s.parse().unwrap();
     assert_eq!(v, parsed);
@@ -146,8 +146,8 @@ add bounds to avoid them — they ARE the test.
 ```rust
 #[hegel::test(test_cases = 1000)]
 fn test_numeric_operation(tc: hegel::TestCase) {
-    let a = tc.draw(generators::integers::<i64>());  // includes i64::MIN
-    let b = tc.draw(generators::integers::<i64>());
+    let a = tc.draw(gs::integers::<i64>());  // includes i64::MIN
+    let b = tc.draw(gs::integers::<i64>());
     tc.assume(b != 0);
     // Operations that internally negate, multiply, or compute GCD/LCM
     // often overflow on boundary values
@@ -174,7 +174,7 @@ agree:
 ```rust
 #[hegel::test(test_cases = 1000)]
 fn test_batch_vs_individual(tc: hegel::TestCase) {
-    let s: String = tc.draw(generators::text());
+    let s: String = tc.draw(gs::text());
     let batch_result = compute_for_string(&s);
     let individual_sum: usize = s.chars().map(|c| compute_for_char(c)).sum();
     assert_eq!(batch_result, individual_sum);
@@ -195,8 +195,8 @@ inputs:
 ```rust
 #[hegel::test(test_cases = 1000)]
 fn test_with_large_input(tc: hegel::TestCase) {
-    let n = tc.draw(generators::integers::<usize>().max_value(300));
-    let keys: Vec<i32> = tc.draw(generators::vecs(generators::integers())
+    let n = tc.draw(gs::integers::<usize>().max_value(300));
+    let keys: Vec<i32> = tc.draw(gs::vecs(gs::integers())
         .min_size(n).max_size(n));
     // ... test with large data structure
 }

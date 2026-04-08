@@ -57,11 +57,12 @@ Attributes:
 
 ```rust
 use hegel::{Hegel, Settings, Verbosity};
+use hegel::generators as gs;
 
 #[test]
 fn test_with_builder() {
     Hegel::new(|tc| {
-        let n = tc.draw(generators::integers::<i32>());
+        let n = tc.draw(gs::integers::<i32>());
         assert!(n == n);
     })
     .settings(Settings::new()
@@ -127,8 +128,8 @@ are derandomized by default.
 ```rust
 #[hegel::test]
 fn test_division(tc: hegel::TestCase) {
-    let a = tc.draw(generators::integers::<i64>());
-    let b = tc.draw(generators::integers::<i64>());
+    let a = tc.draw(gs::integers::<i64>());
+    let b = tc.draw(gs::integers::<i64>());
     tc.assume(b != 0);
     tc.note(&format!("dividing {} by {}", a, b));
     let q = a / b;
@@ -152,14 +153,14 @@ is needed for combinator methods (`.map()`, `.filter()`, `.flat_map()`,
 
 ### Numeric Generators
 
-**`generators::integers::<T>()`** — Generate any integer type
+**`gs::integers::<T>()`** — Generate any integer type
 
 Supported types: `i8`, `i16`, `i32`, `i64`, `i128`, `u8`, `u16`, `u32`, `u64`,
 `u128`, `isize`, `usize`.
 
 ```rust
-let n: i32 = tc.draw(generators::integers::<i32>());
-let bounded: u8 = tc.draw(generators::integers::<u8>()
+let n: i32 = tc.draw(gs::integers::<i32>());
+let bounded: u8 = tc.draw(gs::integers::<u8>()
     .min_value(1)
     .max_value(100));
 ```
@@ -168,11 +169,11 @@ Config methods:
 - `.min_value(T)` — Inclusive lower bound
 - `.max_value(T)` — Inclusive upper bound
 
-**`generators::floats::<T>()`** — Generate `f32` or `f64`
+**`gs::floats::<T>()`** — Generate `f32` or `f64`
 
 ```rust
-let f: f64 = tc.draw(generators::floats::<f64>());
-let bounded: f64 = tc.draw(generators::floats::<f64>()
+let f: f64 = tc.draw(gs::floats::<f64>());
+let bounded: f64 = tc.draw(gs::floats::<f64>()
     .min_value(0.0)
     .max_value(1.0));
 ```
@@ -188,24 +189,24 @@ Config methods:
 ### Boolean Generator
 
 ```rust
-let b: bool = tc.draw(generators::booleans());
+let b: bool = tc.draw(gs::booleans());
 ```
 
 ### Text and Binary Generators
 
-**`generators::text()`** — Generate `String`
+**`gs::text()`** — Generate `String`
 
 ```rust
-let s: String = tc.draw(generators::text());
-let bounded: String = tc.draw(generators::text()
+let s: String = tc.draw(gs::text());
+let bounded: String = tc.draw(gs::text()
     .min_size(1).max_size(100));
 ```
 
-**`generators::binary()`** — Generate `Vec<u8>`
+**`gs::binary()`** — Generate `Vec<u8>`
 
 ```rust
-let bytes: Vec<u8> = tc.draw(generators::binary());
-let bounded: Vec<u8> = tc.draw(generators::binary()
+let bytes: Vec<u8> = tc.draw(gs::binary());
+let bounded: Vec<u8> = tc.draw(gs::binary()
     .min_size(10).max_size(50));
 ```
 
@@ -217,25 +218,25 @@ Config methods (both):
 
 ```rust
 // Always returns the same value
-let x: i32 = tc.draw(generators::just(42));
+let x: i32 = tc.draw(gs::just(42));
 
 // Always returns ()
-let u: () = tc.draw(generators::unit());
+let u: () = tc.draw(gs::unit());
 
 // Sample uniformly from a fixed set
-let suit: &str = tc.draw(generators::sampled_from(
+let suit: &str = tc.draw(gs::sampled_from(
     vec!["hearts", "diamonds", "clubs", "spades"]));
 ```
 
 ### Collection Generators
 
-**`generators::vecs(element_gen)`** — Generate `Vec<T>`
+**`gs::vecs(element_gen)`** — Generate `Vec<T>`
 
 ```rust
-let v: Vec<i32> = tc.draw(generators::vecs(generators::integers::<i32>()));
-let bounded: Vec<i32> = tc.draw(generators::vecs(generators::integers::<i32>())
+let v: Vec<i32> = tc.draw(gs::vecs(gs::integers::<i32>()));
+let bounded: Vec<i32> = tc.draw(gs::vecs(gs::integers::<i32>())
     .min_size(1).max_size(10));
-let unique: Vec<i32> = tc.draw(generators::vecs(generators::integers::<i32>())
+let unique: Vec<i32> = tc.draw(gs::vecs(gs::integers::<i32>())
     .unique());
 ```
 
@@ -244,34 +245,34 @@ Config methods:
 - `.max_size(usize)` — Maximum length
 - `.unique()` — All elements distinct
 
-**`generators::hashsets(element_gen)`** — Generate `HashSet<T>` where `T: Eq + Hash`
+**`gs::hashsets(element_gen)`** — Generate `HashSet<T>` where `T: Eq + Hash`
 
 ```rust
-let s: HashSet<i32> = tc.draw(generators::hashsets(generators::integers::<i32>())
+let s: HashSet<i32> = tc.draw(gs::hashsets(gs::integers::<i32>())
     .min_size(1).max_size(5));
 ```
 
-**`generators::hashmaps(key_gen, value_gen)`** — Generate `HashMap<K, V>`
+**`gs::hashmaps(key_gen, value_gen)`** — Generate `HashMap<K, V>`
 
 ```rust
-let m: HashMap<String, i32> = tc.draw(generators::hashmaps(
-    generators::text().max_size(10),
-    generators::integers::<i32>(),
+let m: HashMap<String, i32> = tc.draw(gs::hashmaps(
+    gs::text().max_size(10),
+    gs::integers::<i32>(),
 ).max_size(5));
 ```
 
-**`generators::arrays::<T, N>(element_gen)`** — Generate `[T; N]`
+**`gs::arrays::<T, N>(element_gen)`** — Generate `[T; N]`
 
 ```rust
-let arr: [i32; 5] = tc.draw(generators::arrays::<i32, 5>(generators::integers()));
+let arr: [i32; 5] = tc.draw(gs::arrays::<i32, 5>(gs::integers()));
 ```
 
-**`generators::fixed_dicts()`** — Generate CBOR maps with fixed keys
+**`gs::fixed_dicts()`** — Generate CBOR maps with fixed keys
 
 ```rust
-let map = tc.draw(generators::fixed_dicts()
-    .field("name", generators::text())
-    .field("age", generators::integers::<u32>())
+let map = tc.draw(gs::fixed_dicts()
+    .field("name", gs::text())
+    .field("age", gs::integers::<u32>())
     .build());
 ```
 
@@ -280,15 +281,15 @@ let map = tc.draw(generators::fixed_dicts()
 Use the `tuples!` macro with 2–12 component generators:
 
 ```rust
-let pair: (i32, String) = tc.draw(generators::tuples!(
-    generators::integers::<i32>(),
-    generators::text(),
+let pair: (i32, String) = tc.draw(gs::tuples!(
+    gs::integers::<i32>(),
+    gs::text(),
 ));
 
-let triple: (bool, i32, f64) = tc.draw(generators::tuples!(
-    generators::booleans(),
-    generators::integers::<i32>(),
-    generators::floats::<f64>(),
+let triple: (bool, i32, f64) = tc.draw(gs::tuples!(
+    gs::booleans(),
+    gs::integers::<i32>(),
+    gs::floats::<f64>(),
 ));
 ```
 
@@ -296,20 +297,20 @@ let triple: (bool, i32, f64) = tc.draw(generators::tuples!(
 
 ```rust
 let maybe: Option<i32> = tc.draw(
-    generators::optional(generators::integers::<i32>()));
+    gs::optional(gs::integers::<i32>()));
 ```
 
 ### Format Generators
 
 ```rust
-let email: String = tc.draw(generators::emails());
-let url: String = tc.draw(generators::urls());
-let domain: String = tc.draw(generators::domains().max_length(50));
-let date: String = tc.draw(generators::dates());        // YYYY-MM-DD
-let time: String = tc.draw(generators::times());         // HH:MM:SS
-let dt: String = tc.draw(generators::datetimes());
-let ipv4: String = tc.draw(generators::ip_addresses().v4());
-let ipv6: String = tc.draw(generators::ip_addresses().v6());
+let email: String = tc.draw(gs::emails());
+let url: String = tc.draw(gs::urls());
+let domain: String = tc.draw(gs::domains().max_length(50));
+let date: String = tc.draw(gs::dates());        // YYYY-MM-DD
+let time: String = tc.draw(gs::times());         // HH:MM:SS
+let dt: String = tc.draw(gs::datetimes());
+let ipv4: String = tc.draw(gs::ip_addresses().v4());
+let ipv6: String = tc.draw(gs::ip_addresses().v6());
 ```
 
 ### Duration Generator
@@ -317,8 +318,8 @@ let ipv6: String = tc.draw(generators::ip_addresses().v6());
 ```rust
 use std::time::Duration;
 
-let d: Duration = tc.draw(generators::durations());
-let bounded: Duration = tc.draw(generators::durations()
+let d: Duration = tc.draw(gs::durations());
+let bounded: Duration = tc.draw(gs::durations()
     .min_value(Duration::from_secs(1))
     .max_value(Duration::from_secs(60)));
 ```
@@ -331,7 +332,7 @@ Config methods:
 
 ```rust
 let code: String = tc.draw(
-    generators::from_regex(r"[A-Z]{3}-[0-9]{3}").fullmatch(true));
+    gs::from_regex(r"[A-Z]{3}-[0-9]{3}").fullmatch(true));
 ```
 
 - `.fullmatch(bool)` — Require the pattern matches the entire string
@@ -342,10 +343,10 @@ let code: String = tc.draw(
 // Cargo.toml: cargo add --dev hegeltest --features rand
 
 // Default: artificial randomness — every random decision is shrinkable
-let mut rng = tc.draw(generators::randoms());
+let mut rng = tc.draw(gs::randoms());
 
 // True randomness — single shrinkable seed, real StdRng output
-let mut rng = tc.draw(generators::randoms().use_true_random(true));
+let mut rng = tc.draw(gs::randoms().use_true_random(true));
 ```
 
 The returned `HegelRandom` implements `rand::RngCore` (rand 0.9).
@@ -379,7 +380,7 @@ Transform generated values:
 
 ```rust
 let positive_str: String = tc.draw(
-    generators::integers::<u32>()
+    gs::integers::<u32>()
         .min_value(1)
         .map(|n| n.to_string()));
 ```
@@ -390,7 +391,7 @@ Keep only values matching a predicate:
 
 ```rust
 let even: i32 = tc.draw(
-    generators::integers::<i32>()
+    gs::integers::<i32>()
         .filter(|x| x % 2 == 0));
 ```
 
@@ -403,11 +404,11 @@ Dependent generation — use one value to choose the next generator:
 
 ```rust
 let (n, v): (usize, Vec<i32>) = tc.draw(
-    generators::integers::<usize>()
+    gs::integers::<usize>()
         .min_value(1)
         .max_value(5)
         .flat_map(|n| {
-            generators::vecs(generators::integers::<i32>())
+            gs::vecs(gs::integers::<i32>())
                 .min_size(n).max_size(n)
                 .map(move |v| (n, v))
         }));
@@ -419,7 +420,7 @@ assert_eq!(v.len(), n);
 Type-erase a generator for use in collections or polymorphic contexts:
 
 ```rust
-let gen: BoxedGenerator<i32> = generators::integers::<i32>().boxed();
+let gen: BoxedGenerator<i32> = gs::integers::<i32>().boxed();
 ```
 
 ## Macros
@@ -430,9 +431,9 @@ Choose between multiple generators of the same type:
 
 ```rust
 let n: i32 = tc.draw(hegel::one_of!(
-    generators::just(0),
-    generators::integers::<i32>().min_value(1).max_value(100),
-    generators::integers::<i32>().min_value(-100).max_value(-1),
+    gs::just(0),
+    gs::integers::<i32>().min_value(1).max_value(100),
+    gs::integers::<i32>().min_value(-100).max_value(-1),
 ));
 ```
 
@@ -447,8 +448,8 @@ function must have an explicit return type.
 ```rust
 #[hegel::composite]
 fn points(tc: hegel::TestCase, max_coord: f64) -> (f64, f64) {
-    let x = tc.draw(generators::floats::<f64>().min_value(-max_coord).max_value(max_coord));
-    let y = tc.draw(generators::floats::<f64>().min_value(-max_coord).max_value(max_coord));
+    let x = tc.draw(gs::floats::<f64>().min_value(-max_coord).max_value(max_coord));
+    let y = tc.draw(gs::floats::<f64>().min_value(-max_coord).max_value(max_coord));
     (x, y)
 }
 
@@ -471,8 +472,8 @@ that don't need to be reused):
 use hegel::compose;
 
 let point_gen = compose!(|tc| {
-    let x = tc.draw(generators::floats::<f64>().min_value(-100.0).max_value(100.0));
-    let y = tc.draw(generators::floats::<f64>().min_value(-100.0).max_value(100.0));
+    let x = tc.draw(gs::floats::<f64>().min_value(-100.0).max_value(100.0));
+    let y = tc.draw(gs::floats::<f64>().min_value(-100.0).max_value(100.0));
     (x, y)
 });
 
@@ -485,7 +486,8 @@ Auto-derive a generator for structs you own:
 
 ```rust
 use hegel::DefaultGenerator;
-use hegel::generators::{self, DefaultGenerator as _, Generator};
+use hegel::generators as gs;
+use hegel::generators::{DefaultGenerator as _, Generator};
 
 #[derive(DefaultGenerator, Debug)]
 struct User {
@@ -497,18 +499,18 @@ struct User {
 #[hegel::test]
 fn test_user(tc: hegel::TestCase) {
     // Default generators for all fields:
-    let user: User = tc.draw(generators::default::<User>());
+    let user: User = tc.draw(gs::default::<User>());
 
     // Customize specific fields:
     let adult: User = tc.draw(User::default_generator()
-        .age(generators::integers().min_value(18).max_value(120))
-        .name(generators::from_regex(r"[A-Z][a-z]{2,15}").fullmatch(true)));
+        .age(gs::integers().min_value(18).max_value(120))
+        .name(gs::from_regex(r"[A-Z][a-z]{2,15}").fullmatch(true)));
     assert!(adult.age >= 18);
 }
 ```
 
 The derive implements the `DefaultGenerator` trait and creates a generator with:
-- `generators::default::<Type>()` or `Type::default_generator()` — Uses default generators for all fields
+- `gs::default::<Type>()` or `Type::default_generator()` — Uses default generators for all fields
 - `.<field>(gen)` — Override a specific field's generator
 
 Works with enums too.
@@ -519,7 +521,8 @@ For types you don't own:
 
 ```rust
 use hegel::derive_generator;
-use hegel::generators::{self, DefaultGenerator, Generator};
+use hegel::generators as gs;
+use hegel::generators::{DefaultGenerator, Generator};
 
 struct Point { x: f64, y: f64 }
 
@@ -527,9 +530,9 @@ derive_generator!(Point { x: f64, y: f64 });
 
 #[hegel::test]
 fn test_point(tc: hegel::TestCase) {
-    let p: Point = tc.draw(generators::default::<Point>()
-        .x(generators::floats().min_value(-10.0).max_value(10.0))
-        .y(generators::floats().min_value(-10.0).max_value(10.0)));
+    let p: Point = tc.draw(gs::default::<Point>()
+        .x(gs::floats().min_value(-10.0).max_value(10.0))
+        .y(gs::floats().min_value(-10.0).max_value(10.0)));
 }
 ```
 
@@ -538,11 +541,12 @@ fn test_point(tc: hegel::TestCase) {
 ### Round-trip (serialize/deserialize)
 
 ```rust
-use hegel::generators::{self, Generator};
+use hegel::generators as gs;
+use hegel::generators::Generator;
 
 #[hegel::test]
 fn test_json_round_trip(tc: hegel::TestCase) {
-    let value = tc.draw(generators::default::<User>());
+    let value = tc.draw(gs::default::<User>());
     let json = serde_json::to_string(&value).unwrap();
     let recovered: User = serde_json::from_str(&json).unwrap();
     assert_eq!(value, recovered);
@@ -552,11 +556,12 @@ fn test_json_round_trip(tc: hegel::TestCase) {
 ### Invariant preservation
 
 ```rust
-use hegel::generators::{self, Generator};
+use hegel::generators as gs;
+use hegel::generators::Generator;
 
 #[hegel::test]
 fn test_sort_preserves_length(tc: hegel::TestCase) {
-    let mut v: Vec<i32> = tc.draw(generators::vecs(generators::integers()));
+    let mut v: Vec<i32> = tc.draw(gs::vecs(gs::integers()));
     let original_len = v.len();
     v.sort();
     assert_eq!(v.len(), original_len);
@@ -566,11 +571,12 @@ fn test_sort_preserves_length(tc: hegel::TestCase) {
 ### Oracle / reference implementation
 
 ```rust
-use hegel::generators::{self, Generator};
+use hegel::generators as gs;
+use hegel::generators::Generator;
 
 #[hegel::test]
 fn test_my_sort_matches_std(tc: hegel::TestCase) {
-    let v: Vec<i32> = tc.draw(generators::vecs(generators::integers()));
+    let v: Vec<i32> = tc.draw(gs::vecs(gs::integers()));
     let mut expected = v.clone();
     expected.sort();
     let actual = my_sort(&v);
@@ -581,11 +587,12 @@ fn test_my_sort_matches_std(tc: hegel::TestCase) {
 ### No-crash / robustness
 
 ```rust
-use hegel::generators::{self, Generator};
+use hegel::generators as gs;
+use hegel::generators::Generator;
 
 #[hegel::test]
 fn test_parse_doesnt_panic(tc: hegel::TestCase) {
-    let input: String = tc.draw(generators::text());
+    let input: String = tc.draw(gs::text());
     // Just verify it doesn't panic — any result is fine
     let _ = MyParser::parse(&input);
 }
@@ -594,13 +601,14 @@ fn test_parse_doesnt_panic(tc: hegel::TestCase) {
 ### Dependent generation
 
 ```rust
-use hegel::generators::{self, Generator};
+use hegel::generators as gs;
+use hegel::generators::Generator;
 
 #[hegel::test]
 fn test_valid_index(tc: hegel::TestCase) {
-    let v: Vec<i32> = tc.draw(generators::vecs(generators::integers::<i32>())
+    let v: Vec<i32> = tc.draw(gs::vecs(gs::integers::<i32>())
         .min_size(1));
-    let idx = tc.draw(generators::integers::<usize>()
+    let idx = tc.draw(gs::integers::<usize>()
         .min_value(0)
         .max_value(v.len() - 1));
     // idx is always a valid index
@@ -612,7 +620,8 @@ fn test_valid_index(tc: hegel::TestCase) {
 
 ```rust
 use hegel::DefaultGenerator;
-use hegel::generators::{self, DefaultGenerator as _, Generator};
+use hegel::generators as gs;
+use hegel::generators::{DefaultGenerator as _, Generator};
 
 #[derive(DefaultGenerator, Debug, Clone, PartialEq)]
 struct Config {
@@ -623,8 +632,8 @@ struct Config {
 
 #[hegel::test]
 fn test_config_merge(tc: hegel::TestCase) {
-    let base = tc.draw(generators::default::<Config>());
-    let override_cfg = tc.draw(generators::default::<Config>());
+    let base = tc.draw(gs::default::<Config>());
+    let override_cfg = tc.draw(gs::default::<Config>());
     let merged = base.merge(&override_cfg);
     // Property: merged config should have override's values
     assert_eq!(merged.name, override_cfg.name);
@@ -647,23 +656,24 @@ fn test_reverse() {
 After (property-based test):
 
 ```rust
-use hegel::generators::{self, Generator};
+use hegel::generators as gs;
+use hegel::generators::Generator;
 
 #[hegel::test]
 fn test_reverse_involution(tc: hegel::TestCase) {
-    let v: Vec<i32> = tc.draw(generators::vecs(generators::integers()));
+    let v: Vec<i32> = tc.draw(gs::vecs(gs::integers()));
     assert_eq!(reverse(&reverse(&v)), v);
 }
 
 #[hegel::test]
 fn test_reverse_preserves_length(tc: hegel::TestCase) {
-    let v: Vec<i32> = tc.draw(generators::vecs(generators::integers()));
+    let v: Vec<i32> = tc.draw(gs::vecs(gs::integers()));
     assert_eq!(reverse(&v).len(), v.len());
 }
 
 #[hegel::test]
 fn test_reverse_preserves_elements(tc: hegel::TestCase) {
-    let mut v: Vec<i32> = tc.draw(generators::vecs(generators::integers()));
+    let mut v: Vec<i32> = tc.draw(gs::vecs(gs::integers()));
     let mut reversed = reverse(&v);
     v.sort();
     reversed.sort();
@@ -674,7 +684,8 @@ fn test_reverse_preserves_elements(tc: hegel::TestCase) {
 ### Model-based testing (data structures)
 
 ```rust
-use hegel::generators::{self, Generator};
+use hegel::generators as gs;
+use hegel::generators::Generator;
 use std::collections::HashMap;
 
 #[hegel::test(test_cases = 1000)]
@@ -682,21 +693,21 @@ fn test_my_map_model(tc: hegel::TestCase) {
     let mut my_map = MyMap::new();
     let mut model = HashMap::new();
 
-    let num_ops = tc.draw(generators::integers::<usize>().max_value(100));
+    let num_ops = tc.draw(gs::integers::<usize>().max_value(100));
     for _ in 0..num_ops {
-        let op = tc.draw(generators::integers::<u8>().max_value(3));
+        let op = tc.draw(gs::integers::<u8>().max_value(3));
         match op {
             0 => {
-                let k = tc.draw(generators::integers::<i32>());
-                let v = tc.draw(generators::integers::<i32>());
+                let k = tc.draw(gs::integers::<i32>());
+                let v = tc.draw(gs::integers::<i32>());
                 assert_eq!(my_map.insert(k, v), model.insert(k, v));
             }
             1 => {
-                let k = tc.draw(generators::integers::<i32>());
+                let k = tc.draw(gs::integers::<i32>());
                 assert_eq!(my_map.remove(&k), model.remove(&k));
             }
             2 => {
-                let k = tc.draw(generators::integers::<i32>());
+                let k = tc.draw(gs::integers::<i32>());
                 assert_eq!(my_map.get(&k), model.get(&k));
             }
             _ => {
@@ -710,12 +721,13 @@ fn test_my_map_model(tc: hegel::TestCase) {
 ### Commutativity
 
 ```rust
-use hegel::generators::{self, Generator};
+use hegel::generators as gs;
+use hegel::generators::Generator;
 
 #[hegel::test]
 fn test_set_union_commutes(tc: hegel::TestCase) {
-    let a: HashSet<i32> = tc.draw(generators::hashsets(generators::integers()));
-    let b: HashSet<i32> = tc.draw(generators::hashsets(generators::integers()));
+    let a: HashSet<i32> = tc.draw(gs::hashsets(gs::integers()));
+    let b: HashSet<i32> = tc.draw(gs::hashsets(gs::integers()));
     assert_eq!(a.union(&b).collect::<HashSet<_>>(),
                b.union(&a).collect::<HashSet<_>>());
 }
@@ -724,11 +736,12 @@ fn test_set_union_commutes(tc: hegel::TestCase) {
 ### Idempotence (normalization / case conversion)
 
 ```rust
-use hegel::generators::{self, Generator};
+use hegel::generators as gs;
+use hegel::generators::Generator;
 
 #[hegel::test(test_cases = 1000)]
 fn test_normalize_idempotent(tc: hegel::TestCase) {
-    let s: String = tc.draw(generators::text());  // full Unicode, not ASCII
+    let s: String = tc.draw(gs::text());  // full Unicode, not ASCII
     let once = normalize(&s);
     let twice = normalize(&once);
     assert_eq!(once, twice, "not idempotent for {:?}", s);
@@ -738,11 +751,12 @@ fn test_normalize_idempotent(tc: hegel::TestCase) {
 ### Parse robustness
 
 ```rust
-use hegel::generators::{self, Generator};
+use hegel::generators as gs;
+use hegel::generators::Generator;
 
 #[hegel::test(test_cases = 1000)]
 fn test_parse_no_panic(tc: hegel::TestCase) {
-    let s: String = tc.draw(generators::text());
+    let s: String = tc.draw(gs::text());
     let _ = MyType::from_str(&s);  // should never panic, just return Err
 }
 ```
@@ -760,23 +774,24 @@ map.insert(k, k * 10);
 map.insert(k, k.wrapping_mul(10));
 
 // ALSO GOOD — use smaller types for intermediate computation
-let k = tc.draw(generators::integers::<i16>()) as i32;
+let k = tc.draw(gs::integers::<i16>()) as i32;
 let k_squared = k * k;  // can't overflow i32
 ```
 
 ### Testing code that uses randomness
 
 ```rust
-use hegel::generators::{self, Generator};
+use hegel::generators as gs;
+use hegel::generators::Generator;
 
 // Code under test: fn sample(weights: &[f64], rng: &mut impl Rng) -> usize
 
 #[hegel::test]
 fn test_sample_returns_valid_index(tc: hegel::TestCase) {
-    let weights: Vec<f64> = tc.draw(generators::vecs(
-        generators::floats::<f64>().min_value(0.0).exclude_min(true)
+    let weights: Vec<f64> = tc.draw(gs::vecs(
+        gs::floats::<f64>().min_value(0.0).exclude_min(true)
     ).min_size(1));
-    let mut rng = tc.draw(generators::randoms());
+    let mut rng = tc.draw(gs::randoms());
     let idx = sample(&weights, &mut rng);
     assert!(idx < weights.len());
 }
@@ -788,11 +803,11 @@ switch to `use_true_random()`:
 ```rust
 #[hegel::test]
 fn test_rejection_sampler(tc: hegel::TestCase) {
-    let weights: Vec<f64> = tc.draw(generators::vecs(
-        generators::floats::<f64>().min_value(0.0).exclude_min(true)
+    let weights: Vec<f64> = tc.draw(gs::vecs(
+        gs::floats::<f64>().min_value(0.0).exclude_min(true)
     ).min_size(1));
     // use_true_random(true) avoids hangs from rejection sampling loops
-    let mut rng = tc.draw(generators::randoms().use_true_random(true));
+    let mut rng = tc.draw(gs::randoms().use_true_random(true));
     let idx = rejection_sample(&weights, &mut rng);
     assert!(idx < weights.len());
 }
@@ -804,7 +819,7 @@ Do NOT do this (defeats shrinking):
 // BAD: hegel can only shrink the seed, not the random decisions
 #[hegel::test]
 fn test_sample_bad(tc: hegel::TestCase) {
-    let seed = tc.draw(generators::integers::<u64>());
+    let seed = tc.draw(gs::integers::<u64>());
     let mut rng = ChaCha8Rng::seed_from_u64(seed);  // WRONG
     let idx = sample(&weights, &mut rng);
     assert!(idx < weights.len());
@@ -825,14 +840,14 @@ fn test_sample_bad(tc: hegel::TestCase) {
    caching the server binary and storing the database of previous failures. Add
    it to `.gitignore`.
 
-4. **Float defaults include NaN and infinity.** `generators::floats::<f64>()`
+4. **Float defaults include NaN and infinity.** `gs::floats::<f64>()`
    with no bounds generates NaN and infinity by default. If your code doesn't
    handle these, use `.allow_nan(false)` and/or `.allow_infinity(false)` — but
    consider whether the code *should* handle them first.
 
 5. **Type annotations are required for numeric generators.**
-   `generators::integers()` won't compile — you must write
-   `generators::integers::<i32>()` (or whatever type you need).
+   `gs::integers()` won't compile — you must write
+   `gs::integers::<i32>()` (or whatever type you need).
 
 6. **Excessive assume/filter rejections fail the test.** If `tc.assume()` or
    `.filter()` rejects too many inputs, Hegel gives up. Restructure your
@@ -845,18 +860,18 @@ fn test_sample_bad(tc: hegel::TestCase) {
 8. **`target()` is not yet available** in the Rust SDK. It is planned for a
    future release.
 
-9. **Default collection sizes are small.** `generators::vecs(gen)` with no
+9. **Default collection sizes are small.** `gs::vecs(gen)` with no
    bounds rarely produces 100+ elements. If you need large collections (e.g.,
    to test tree traversal at depth), draw the size separately:
    ```rust
-   let n = tc.draw(generators::integers::<usize>().max_value(300));
-   let keys: Vec<i32> = tc.draw(generators::vecs(generators::integers()).min_size(n));
+   let n = tc.draw(gs::integers::<usize>().max_value(300));
+   let keys: Vec<i32> = tc.draw(gs::vecs(gs::integers()).min_size(n));
    ```
 
 10. **Use `.unique()` for map/set key generation.** When testing ordered maps
     or sets, generate unique keys to avoid ambiguity about which value wins:
     ```rust
-    let keys: Vec<i32> = tc.draw(generators::vecs(generators::integers::<i32>())
+    let keys: Vec<i32> = tc.draw(gs::vecs(gs::integers::<i32>())
         .max_size(50).unique());
     ```
 
@@ -870,7 +885,7 @@ then run the state machine.
 
 ```rust
 use hegel::TestCase;
-use hegel::generators::integers;
+use hegel::generators as gs;
 
 struct IntegerStack {
     stack: Vec<i32>,
@@ -880,7 +895,7 @@ struct IntegerStack {
 impl IntegerStack {
     #[rule]
     fn push(&mut self, tc: TestCase) {
-        let element = tc.draw(integers::<i32>());
+        let element = tc.draw(gs::integers::<i32>());
         self.stack.push(element);
     }
 
@@ -938,7 +953,7 @@ struct MyTest {
 impl MyTest {
     #[rule]
     fn create_account(&mut self, tc: TestCase) {
-        let name = tc.draw(generators::text().min_size(1));
+        let name = tc.draw(gs::text().min_size(1));
         self.accounts.add(name);
     }
 

@@ -30,7 +30,7 @@ Only Rust and Go are currently documented. Load the corresponding reference
 file for API details and idiomatic patterns. The examples below use Rust
 syntax; consult the language-specific reference for the equivalent API in
 other languages (e.g. Go uses `hegel.Draw(ht, hegel.Integers(min, max))`
-instead of `tc.draw(generators::integers::<i32>())`).
+instead of `tc.draw(gs::integers::<i32>())`).
 
 ### 2. Explore the Code Under Test
 
@@ -141,13 +141,13 @@ Choose the right oracle:
 ### 2. Idempotence Tests (Highest Value for String/Text Processing)
 
 Any normalization, case conversion, or formatting function should be idempotent:
-`f(f(x)) == f(x)`. Use `generators::text()` (not ASCII-only generators) because
+`f(f(x)) == f(x)`. Use `gs::text()` (not ASCII-only generators) because
 Unicode edge cases like `ß` → `SS` and combining characters are where bugs hide.
 
 ### 3. Parse Robustness (Universal — Test Every Parser)
 
 Every `from_str`, `parse`, or `decode` function should be tested with
-`generators::text()`. The property is simple: it should never panic. Parsers
+`gs::text()`. The property is simple: it should never panic. Parsers
 that delegate to constructors which panic on invalid values (instead of returning
 errors) are a common source of bugs.
 
@@ -200,7 +200,7 @@ If the function accepts any `i32`, use the full range of the type:
 
 ```rust
 // Rust — no bounds means full type range
-generators::integers::<i32>()
+gs::integers::<i32>()
 ```
 
 ```go
@@ -211,7 +211,7 @@ hegel.Integers[int32](math.MinInt32, math.MaxInt32)
 Do NOT preemptively narrow the range:
 
 ```rust
-generators::integers::<i32>().min_value(0).max_value(100)  // WRONG unless justified
+gs::integers::<i32>().min_value(0).max_value(100)  // WRONG unless justified
 ```
 
 ### Edge Cases Are the Point
@@ -244,8 +244,8 @@ Add generator bounds **only** when:
 When a constraint involves relationships between multiple generated values, you may use `tc.assume()`:
 
 ```rust
-let a = tc.draw(generators::integers::<i32>());
-let b = tc.draw(generators::integers::<i32>());
+let a = tc.draw(gs::integers::<i32>());
+let b = tc.draw(gs::integers::<i32>());
 tc.assume(a != b);  // constraint relates two values
 ```
 
@@ -254,23 +254,23 @@ This example is perfectly fine, but it is better to avoid `assume` altogether wh
 e.g.
 
 ```rust
-let a = tc.draw(generators::integers::<i32>());
-let b = tc.draw(generators::integers::<i32>().min_value(a));
+let a = tc.draw(gs::integers::<i32>());
+let b = tc.draw(gs::integers::<i32>().min_value(a));
 ```
 
 is better than
 
 ```rust
-let a = tc.draw(generators::integers::<i32>());
-let b = tc.draw(generators::integers::<i32>());
+let a = tc.draw(gs::integers::<i32>());
+let b = tc.draw(gs::integers::<i32>());
 tc.assume(a <= b)
 ```
 
 Even better is:
 
 ```rust
-let mut a = tc.draw(generators::integers::<i32>());
-let mut b = tc.draw(generators::integers::<i32>());
+let mut a = tc.draw(gs::integers::<i32>());
+let mut b = tc.draw(gs::integers::<i32>());
 if (a > b) {
     (a, b) = (b, a);
 }
@@ -278,7 +278,7 @@ if (a > b) {
 
 It is particularly important to avoid rejection sampling in cases where the rejection rate is likely to be high.
 
-For example `generators::integers::<i32>().map(|n| n * 2)` is much better than `generators::integers::<i32>().filter(|n| n % 2 == 0)`, as the former constructs an even number directly, while the latter throws away around 50% of test cases.
+For example `gs::integers::<i32>().map(|n| n * 2)` is much better than `gs::integers::<i32>().filter(|n| n % 2 == 0)`, as the former constructs an even number directly, while the latter throws away around 50% of test cases.
 
 ### Getting Large Collections
 
@@ -287,12 +287,12 @@ to exercise deep tree paths), draw the size separately and pass it as `min_size`
 
 ```rust
 // GOOD — can generate large collections, shrinks well
-let n = tc.draw(generators::integers::<usize>().max_value(300));
-let keys: Vec<i32> = tc.draw(generators::vecs(generators::integers())
+let n = tc.draw(gs::integers::<usize>().max_value(300));
+let keys: Vec<i32> = tc.draw(gs::vecs(gs::integers())
     .min_size(n));  // no max_size — let hegel go bigger if it wants
 
 // BAD — hegel's default size distribution rarely produces 100+ elements
-let keys: Vec<i32> = tc.draw(generators::vecs(generators::integers()));
+let keys: Vec<i32> = tc.draw(gs::vecs(gs::integers()));
 ```
 
 Setting `min_size` but *not* `max_size` is a shrinking optimization: hegel can
@@ -304,7 +304,7 @@ still being able to add extra elements if needed.
 When testing maps/sets that need unique keys:
 
 ```rust
-let keys: Vec<i32> = tc.draw(generators::vecs(generators::integers::<i32>())
+let keys: Vec<i32> = tc.draw(gs::vecs(gs::integers::<i32>())
     .max_size(30).unique());
 ```
 
@@ -337,13 +337,13 @@ that defeats the purpose.
 
 ### Two modes: artificial vs true randomness
 
-`generators::randoms()` has two modes:
+`gs::randoms()` has two modes:
 
 - **Default (artificial randomness):** Every random decision goes through hegel,
   enabling fine-grained shrinking of individual random values. This is the best
   option for most code.
 
-- **`generators::randoms().use_true_random(true)`:** Generates a single seed via
+- **`gs::randoms().use_true_random(true)`:** Generates a single seed via
   hegel, then creates a real `StdRng` from it. Hegel can only shrink the seed,
   not individual random decisions. Use this when the code under test does
   **rejection sampling** or otherwise depends on the RNG producing
@@ -368,7 +368,7 @@ to the user.
 3. **Using the implementation as the oracle** — If your test calls the same function to compute the expected result, it can never fail. Use an independent reference implementation (do not just copy the code to write this!), a simpler algorithm, or a structural property.
 4. **Generating too broadly then filtering almost everything** — If `Filter` or `Assume` rejects most inputs, Hegel will give up. Restructure your generators instead (e.g., use `Map` or dependent generation).
 5. **Creating a separate test file for hegel tests** — Property-based tests belong alongside the existing tests for the same code. Don't create a separate `test_hegel.rs` or `hegel_test.go` — add them to the existing test files.
-6. **Using manually seeded RNGs** (Rust) — Don't generate a seed with hegel then create `ChaCha8Rng::seed_from_u64(seed)`. Use `generators::randoms()` with the `rand` feature so hegel controls the random decisions and can shrink them. See "Handling Randomness" above.
+6. **Using manually seeded RNGs** (Rust) — Don't generate a seed with hegel then create `ChaCha8Rng::seed_from_u64(seed)`. Use `gs::randoms()` with the `rand` feature so hegel controls the random decisions and can shrink them. See "Handling Randomness" above.
 7. **Overflowing in test code** — When computing values from generated data (e.g., `map.insert(k, k * 10)`), your test code itself can overflow before the library has a chance to be buggy. In Rust, use wrapping arithmetic (`k.wrapping_mul(10)`) or smaller intermediate types (draw `i16`, cast to `i32` for multiplication). In Go, generate smaller types (e.g., `int16`) and widen before arithmetic. Distinguish "this constraint protects the library's contract" (keep it) from "this constraint prevents my test from overflowing" (use wrapping arithmetic instead).
 8. **Adding `.MaxSize()` for performance** — If a test is slow with large collections, lower `test_cases` rather than restricting the input space. A slow test that finds bugs beats a fast test that can't. Many tree/trie bugs only manifest at 50-200+ elements.
 

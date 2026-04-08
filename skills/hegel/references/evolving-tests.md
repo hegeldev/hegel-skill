@@ -17,7 +17,7 @@ Look for tests that:
   a property — just replace `x` with a generator.
 - **Contain existing randomness or hardcoded seeds.** Tests that create RNGs
   with fixed seeds (`ChaCha8Rng::seed_from_u64(42)`) or use `rand` are
-  excellent candidates. Replace the manual RNG with `generators::randoms()`
+  excellent candidates. Replace the manual RNG with `gs::randoms()`
   so hegel controls the randomness and can shrink failures.
 - **Test invariants across examples.** If every test case checks the same
   condition (e.g., output is sorted, length is preserved), that's a property.
@@ -62,13 +62,13 @@ Replace concrete values with generated ones:
 ```rust
 #[hegel::test]
 fn test_abs_non_negative(tc: hegel::TestCase) {
-    let x = tc.draw(generators::integers::<i64>());
+    let x = tc.draw(gs::integers::<i64>());
     assert!(my_abs(x) >= 0);
 }
 
 #[hegel::test]
 fn test_abs_symmetric(tc: hegel::TestCase) {
-    let x = tc.draw(generators::integers::<i64>());
+    let x = tc.draw(gs::integers::<i64>());
     assert_eq!(my_abs(x), my_abs(-x));
 }
 ```
@@ -118,7 +118,7 @@ After:
 ```rust
 #[hegel::test]
 fn test_int_display_parse_round_trip(tc: hegel::TestCase) {
-    let n = tc.draw(generators::integers::<i32>());
+    let n = tc.draw(gs::integers::<i32>());
     let s = n.to_string();
     assert_eq!(s.parse::<i32>().unwrap(), n);
 }
@@ -145,7 +145,7 @@ After:
 ```rust
 #[hegel::test]
 fn test_push_then_pop_returns_last(tc: hegel::TestCase) {
-    let items: Vec<i32> = tc.draw(generators::vecs(generators::integers()));
+    let items: Vec<i32> = tc.draw(gs::vecs(gs::integers()));
     let mut stack = Stack::new();
     for &item in &items {
         stack.push(item);
@@ -176,7 +176,7 @@ After:
 ```rust
 #[hegel::test]
 fn test_base64_round_trip(tc: hegel::TestCase) {
-    let data: Vec<u8> = tc.draw(generators::binary());
+    let data: Vec<u8> = tc.draw(gs::binary());
     let encoded = base64_encode(&data);
     let decoded = base64_decode(&encoded).unwrap();
     assert_eq!(decoded, data);
@@ -184,7 +184,7 @@ fn test_base64_round_trip(tc: hegel::TestCase) {
 
 #[hegel::test]
 fn test_base64_output_is_valid(tc: hegel::TestCase) {
-    let data: Vec<u8> = tc.draw(generators::binary());
+    let data: Vec<u8> = tc.draw(gs::binary());
     let encoded = base64_encode(&data);
     // Property: output contains only valid base64 characters
     assert!(encoded.chars().all(|c| c.is_ascii_alphanumeric() || c == '+' || c == '/' || c == '='));
@@ -209,7 +209,7 @@ After:
 ```rust
 #[hegel::test]
 fn test_sort_is_sorted(tc: hegel::TestCase) {
-    let v: Vec<i32> = tc.draw(generators::vecs(generators::integers()));
+    let v: Vec<i32> = tc.draw(gs::vecs(gs::integers()));
     let sorted = my_sort(&v);
     for w in sorted.windows(2) {
         assert!(w[0] <= w[1]);
@@ -218,7 +218,7 @@ fn test_sort_is_sorted(tc: hegel::TestCase) {
 
 #[hegel::test]
 fn test_sort_is_permutation(tc: hegel::TestCase) {
-    let v: Vec<i32> = tc.draw(generators::vecs(generators::integers()));
+    let v: Vec<i32> = tc.draw(gs::vecs(gs::integers()));
     let sorted = my_sort(&v);
     let mut expected = v.clone();
     expected.sort();

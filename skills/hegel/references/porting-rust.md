@@ -28,12 +28,13 @@ proptest! {
 Hegel:
 
 ```rust
-use hegel::generators::{self, Generator};
+use hegel::generators as gs;
+use hegel::generators::Generator;
 
 #[hegel::test]
 fn test_addition(tc: hegel::TestCase) {
-    let a = tc.draw(generators::integers::<i32>().min_value(0).max_value(99));
-    let b = tc.draw(generators::integers::<i32>().min_value(0).max_value(99));
+    let a = tc.draw(gs::integers::<i32>().min_value(0).max_value(99));
+    let b = tc.draw(gs::integers::<i32>().min_value(0).max_value(99));
     assert!(a + b >= a);
     assert!(a + b >= b);
 }
@@ -46,18 +47,18 @@ addition, test the full range unless there's a reason not to.
 
 | Proptest | Hegel |
 |----------|-------|
-| `any::<i32>()` | `generators::integers::<i32>()` |
-| `0..100i32` | `generators::integers::<i32>().min_value(0).max_value(99)` |
-| `any::<bool>()` | `generators::booleans()` |
-| `any::<f64>()` | `generators::floats::<f64>()` |
-| `"[a-z]{1,10}"` | `generators::from_regex(r"[a-z]{1,10}").fullmatch(true)` |
-| `any::<String>()` | `generators::text()` |
-| `prop::collection::vec(strat, 0..10)` | `generators::vecs(gen).max_size(9)` |
-| `prop::collection::hash_set(strat, 0..5)` | `generators::hashsets(gen).max_size(4)` |
-| `prop::collection::hash_map(k, v, 0..5)` | `generators::hashmaps(k, v).max_size(4)` |
-| `prop::option::of(strat)` | `generators::optional(gen)` |
-| `(strat_a, strat_b)` | `generators::tuples!(gen_a, gen_b)` |
-| `Just(value)` | `generators::just(value)` |
+| `any::<i32>()` | `gs::integers::<i32>()` |
+| `0..100i32` | `gs::integers::<i32>().min_value(0).max_value(99)` |
+| `any::<bool>()` | `gs::booleans()` |
+| `any::<f64>()` | `gs::floats::<f64>()` |
+| `"[a-z]{1,10}"` | `gs::from_regex(r"[a-z]{1,10}").fullmatch(true)` |
+| `any::<String>()` | `gs::text()` |
+| `prop::collection::vec(strat, 0..10)` | `gs::vecs(gen).max_size(9)` |
+| `prop::collection::hash_set(strat, 0..5)` | `gs::hashsets(gen).max_size(4)` |
+| `prop::collection::hash_map(k, v, 0..5)` | `gs::hashmaps(k, v).max_size(4)` |
+| `prop::option::of(strat)` | `gs::optional(gen)` |
+| `(strat_a, strat_b)` | `gs::tuples!(gen_a, gen_b)` |
+| `Just(value)` | `gs::just(value)` |
 | `prop_oneof![s1, s2]` | `hegel::one_of!(g1, g2)` |
 | `strat.prop_map(f)` | `gen.map(f)` |
 | `strat.prop_flat_map(f)` | `gen.flat_map(f)` |
@@ -101,15 +102,16 @@ Hegel:
 
 ```rust
 use hegel::DefaultGenerator;
-use hegel::generators::{self, DefaultGenerator as _, Generator};
+use hegel::generators as gs;
+use hegel::generators::{DefaultGenerator as _, Generator};
 
 #[derive(Debug, DefaultGenerator)]
 struct Point { x: f64, y: f64 }
 
 #[hegel::test]
 fn test_point(tc: hegel::TestCase) {
-    let p: Point = tc.draw(generators::default::<Point>());
-    // Or customize: tc.draw(Point::default_generator().x(generators::floats().min_value(0.0)))
+    let p: Point = tc.draw(gs::default::<Point>());
+    // Or customize: tc.draw(Point::default_generator().x(gs::floats().min_value(0.0)))
 }
 ```
 
@@ -137,8 +139,8 @@ Hegel (just use sequential draws):
 ```rust
 #[hegel::test]
 fn test_valid_index(tc: hegel::TestCase) {
-    let v: Vec<i32> = tc.draw(generators::vecs(generators::integers::<i32>()).min_size(1));
-    let i = tc.draw(generators::integers::<usize>().min_value(0).max_value(v.len() - 1));
+    let v: Vec<i32> = tc.draw(gs::vecs(gs::integers::<i32>()).min_size(1));
+    let i = tc.draw(gs::integers::<usize>().min_value(0).max_value(v.len() - 1));
     assert!(i < v.len());
 }
 ```
@@ -166,7 +168,7 @@ Hegel:
 ```rust
 #[hegel::test]
 fn test_reverse_involution(tc: hegel::TestCase) {
-    let xs: Vec<i32> = tc.draw(generators::vecs(generators::integers()));
+    let xs: Vec<i32> = tc.draw(gs::vecs(gs::integers()));
     assert_eq!(reverse(&reverse(&xs)), xs);
 }
 ```
@@ -203,8 +205,8 @@ Hegel:
 ```rust
 #[hegel::test]
 fn test_division(tc: hegel::TestCase) {
-    let a = tc.draw(generators::integers::<i64>());
-    let b = tc.draw(generators::integers::<i64>());
+    let a = tc.draw(gs::integers::<i64>());
+    let b = tc.draw(gs::integers::<i64>());
     tc.assume(b != 0);
     assert_eq!(a, (a / b) * b + (a % b));
 }
