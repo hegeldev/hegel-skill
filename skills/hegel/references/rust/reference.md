@@ -1,26 +1,31 @@
-# Hegel Rust SDK Reference
+# Hegel Rust Reference
+
+## Table of Contents
+
+- [Setup](#setup)
+- [Test Structure](#test-structure) — `#[hegel::test]`, builder form, Settings, HealthCheck
+- [TestCase Methods](#testcase-methods) — `draw`, `draw_silent`, `assume`, `note`
+- [Generator Reference](#generator-reference) — Numeric, boolean, text, binary, collections, tuples, optional, format, regex, random
+- [Combinator Methods](#combinator-methods) — `.map()`, `.filter()`, `.flat_map()`, `.boxed()`
+- [Macros](#macros) — `one_of!`, `#[hegel::composite]`, `compose!`, `#[derive(DefaultGenerator)]`, `derive_generator!`
+- [Rust-Specific Examples](#rust-specific-examples) — Derived generators, randomness, dependent generation
+- [Gotchas](#gotchas)
+- [Stateful Testing](#stateful-testing) — `#[hegel::state_machine]`, rules, invariants, Variables
 
 ## Setup
 
-Add to `Cargo.toml`:
+```bash
+cargo add --dev hegeltest```
 
-```toml
-[dev-dependencies]
-hegel = { git = "https://github.com/hegeldev/hegel-rust" }
+If the code under test uses `rand` and you need hegel-controlled RNG instances, enable the `rand` feature:
+
+```bash
+cargo add --dev hegeltest --features rand
 ```
 
-If the code under test uses `rand` and you need hegel-controlled RNG instances,
-enable the `rand` feature:
+Run tests with `cargo test`. Hegel tests use `#[hegel::test]` in place of `#[test]` and integrate directly with the standard Rust test runner.
 
-```toml
-[dev-dependencies]
-hegel = { git = "https://github.com/hegeldev/hegel-rust", features = ["rand"] }
-```
-
-Requires [`uv`](https://github.com/astral-sh/uv) installed and on PATH.
-
-Run tests with `cargo test`. Hegel tests use `#[hegel::test]` in place of
-`#[test]` and integrate directly with the standard Rust test runner.
+If something goes wrong with server installation, see https://hegel.dev/reference/installation.
 
 ## Test Structure
 
@@ -73,8 +78,7 @@ fn test_with_builder() {
 
 ### Settings and HealthCheck
 
-`Settings` controls test execution. It can be passed to `#[hegel::test]` as
-named arguments or as a positional `Settings` object:
+`Settings` controls test execution. It can be passed to `#[hegel::test]` as named arguments or as a positional `Settings` object:
 
 ```rust
 use hegel::{HealthCheck, Settings};
@@ -110,8 +114,7 @@ fn test_positional(tc: hegel::TestCase) { /* ... */ }
 - `TestCasesTooLarge` — Generated test cases are too large
 - `LargeInitialTestCase` — The smallest natural input is very large
 
-In CI environments (detected automatically), the database is disabled and tests
-are derandomized by default.
+In CI environments (detected automatically), the database is disabled and tests are derandomized by default.
 
 ## TestCase Methods
 
@@ -145,15 +148,13 @@ All generators are in the `hegel::generators` module. Import with:
 use hegel::generators::{self, Generator};
 ```
 
-The `Generator` trait import is needed for combinator methods (`.map()`,
-`.filter()`, `.flat_map()`, `.boxed()`).
+The `Generator` trait import is needed for combinator methods (`.map()`, `.filter()`, `.flat_map()`, `.boxed()`).
 
 ### Numeric Generators
 
 **`generators::integers::<T>()`** — Generate any integer type
 
-Supported types: `i8`, `i16`, `i32`, `i64`, `i128`, `u8`, `u16`, `u32`, `u64`,
-`u128`, `isize`, `usize`.
+Supported types: `i8`, `i16`, `i32`, `i64`, `i128`, `u8`, `u16`, `u32`, `u64`, `u128`, `isize`, `usize`.
 
 ```rust
 let n: i32 = tc.draw(generators::integers::<i32>());
@@ -333,20 +334,11 @@ let mut rng = tc.draw(generators::randoms().use_true_random(true));
 
 The returned `HegelRandom` implements `rand::RngCore` (rand 0.9).
 
-**Default mode** routes every `next_u32`/`next_u64`/`fill_bytes` call through
-hegel, so the shrinker can minimize individual random decisions. Best for most
-code.
+**Default mode** routes every `next_u32`/`next_u64`/`fill_bytes` call through hegel, so the shrinker can minimize individual random decisions. Best for most code.
 
-**`use_true_random()` mode** generates a single seed via hegel then creates a
-real `StdRng`. Use this when the code under test does rejection sampling or
-other algorithms that need statistically random-looking output — artificial
-randomness can cause these to loop indefinitely.
+**`use_true_random()` mode** generates a single seed via hegel then creates a real `StdRng`. Use this when the code under test does rejection sampling or other algorithms that need statistically random-looking output — artificial randomness can cause these to loop indefinitely.
 
-**Rand version compatibility:** hegel uses rand 0.9. If the project uses rand
-0.8, the traits are incompatible. Ask the user to upgrade rand (main changes:
-`gen_range` -> `random_range`, `gen::<T>()` -> `random::<T>()`,
-`thread_rng()` -> `rng()`, `from_entropy` -> `from_os_rng`). Do not fall back
-to `ChaCha8Rng::seed_from_u64(hegel_seed)` — that defeats shrinking.
+**Rand version compatibility:** hegel uses rand 0.9. If the project uses rand 0.8, the traits are incompatible. Ask the user to upgrade rand (main changes: `gen_range` -> `random_range`, `gen::<T>()` -> `random::<T>()`, `thread_rng()` -> `rng()`, `from_entropy` -> `from_os_rng`). Do not fall back to `ChaCha8Rng::seed_from_u64(hegel_seed)` — that defeats shrinking.
 
 ## Combinator Methods
 
@@ -377,8 +369,7 @@ let even: i32 = tc.draw(
         .filter(|x| x % 2 == 0));
 ```
 
-Note: `.filter()` retries up to 3 times, then calls `tc.assume(false)`. Prefer
-bounds over filters when possible.
+Note: `.filter()` retries up to 3 times, then calls `tc.assume(false)`. Prefer bounds over filters when possible.
 
 ### `.flat_map(f)`
 
@@ -423,9 +414,7 @@ All branches must return the same type.
 
 ### `#[hegel::composite]`
 
-Define a reusable generator as a function. The first parameter must be
-`TestCase`; additional parameters become arguments to the generator. The
-function must have an explicit return type.
+Define a reusable generator as a function. The first parameter must be `TestCase`; additional parameters become arguments to the generator. The function must have an explicit return type.
 
 ```rust
 #[hegel::composite]
@@ -442,13 +431,11 @@ fn test_points(tc: hegel::TestCase) {
 }
 ```
 
-This is generally preferred over `compose!` because it creates a named,
-reusable generator that can take parameters.
+This is generally preferred over `compose!` because it creates a named, reusable generator that can take parameters.
 
 ### `compose!`
 
-Build an inline generator from imperative code (useful for one-off generators
-that don't need to be reused):
+Build an inline generator from imperative code (useful for one-off generators that don't need to be reused):
 
 ```rust
 use hegel::compose;
@@ -516,65 +503,13 @@ fn test_point(tc: hegel::TestCase) {
 }
 ```
 
-## Idiomatic Patterns
+## Rust-Specific Examples
 
-### Round-trip (serialize/deserialize)
+These examples show Rust-specific features. For general property patterns (round-trip, model-based, idempotence, etc.), see the main skill's Property Catalogue.
 
-```rust
-use hegel::generators::{self, Generator};
+### Dependent generation with sequential draws
 
-#[hegel::test]
-fn test_json_round_trip(tc: hegel::TestCase) {
-    let value = tc.draw(generators::default::<User>());
-    let json = serde_json::to_string(&value).unwrap();
-    let recovered: User = serde_json::from_str(&json).unwrap();
-    assert_eq!(value, recovered);
-}
-```
-
-### Invariant preservation
-
-```rust
-use hegel::generators::{self, Generator};
-
-#[hegel::test]
-fn test_sort_preserves_length(tc: hegel::TestCase) {
-    let mut v: Vec<i32> = tc.draw(generators::vecs(generators::integers()));
-    let original_len = v.len();
-    v.sort();
-    assert_eq!(v.len(), original_len);
-}
-```
-
-### Oracle / reference implementation
-
-```rust
-use hegel::generators::{self, Generator};
-
-#[hegel::test]
-fn test_my_sort_matches_std(tc: hegel::TestCase) {
-    let v: Vec<i32> = tc.draw(generators::vecs(generators::integers()));
-    let mut expected = v.clone();
-    expected.sort();
-    let actual = my_sort(&v);
-    assert_eq!(actual, expected);
-}
-```
-
-### No-crash / robustness
-
-```rust
-use hegel::generators::{self, Generator};
-
-#[hegel::test]
-fn test_parse_doesnt_panic(tc: hegel::TestCase) {
-    let input: String = tc.draw(generators::text());
-    // Just verify it doesn't panic — any result is fine
-    let _ = MyParser::parse(&input);
-}
-```
-
-### Dependent generation
+Hegel's imperative style means dependent generation is just sequential code — no `flat_map` needed:
 
 ```rust
 use hegel::generators::{self, Generator};
@@ -614,139 +549,6 @@ fn test_config_merge(tc: hegel::TestCase) {
 }
 ```
 
-### Evolving a unit test into a PBT
-
-Before (unit test):
-
-```rust
-#[test]
-fn test_reverse() {
-    assert_eq!(reverse(&[1, 2, 3]), vec![3, 2, 1]);
-    assert_eq!(reverse(&[]), Vec::<i32>::new());
-    assert_eq!(reverse(&[42]), vec![42]);
-}
-```
-
-After (property-based test):
-
-```rust
-use hegel::generators::{self, Generator};
-
-#[hegel::test]
-fn test_reverse_involution(tc: hegel::TestCase) {
-    let v: Vec<i32> = tc.draw(generators::vecs(generators::integers()));
-    assert_eq!(reverse(&reverse(&v)), v);
-}
-
-#[hegel::test]
-fn test_reverse_preserves_length(tc: hegel::TestCase) {
-    let v: Vec<i32> = tc.draw(generators::vecs(generators::integers()));
-    assert_eq!(reverse(&v).len(), v.len());
-}
-
-#[hegel::test]
-fn test_reverse_preserves_elements(tc: hegel::TestCase) {
-    let mut v: Vec<i32> = tc.draw(generators::vecs(generators::integers()));
-    let mut reversed = reverse(&v);
-    v.sort();
-    reversed.sort();
-    assert_eq!(v, reversed);
-}
-```
-
-### Model-based testing (data structures)
-
-```rust
-use hegel::generators::{self, Generator};
-use std::collections::HashMap;
-
-#[hegel::test(test_cases = 1000)]
-fn test_my_map_model(tc: hegel::TestCase) {
-    let mut my_map = MyMap::new();
-    let mut model = HashMap::new();
-
-    let num_ops = tc.draw(generators::integers::<usize>().max_value(100));
-    for _ in 0..num_ops {
-        let op = tc.draw(generators::integers::<u8>().max_value(3));
-        match op {
-            0 => {
-                let k = tc.draw(generators::integers::<i32>());
-                let v = tc.draw(generators::integers::<i32>());
-                assert_eq!(my_map.insert(k, v), model.insert(k, v));
-            }
-            1 => {
-                let k = tc.draw(generators::integers::<i32>());
-                assert_eq!(my_map.remove(&k), model.remove(&k));
-            }
-            2 => {
-                let k = tc.draw(generators::integers::<i32>());
-                assert_eq!(my_map.get(&k), model.get(&k));
-            }
-            _ => {
-                assert_eq!(my_map.len(), model.len());
-            }
-        }
-    }
-}
-```
-
-### Commutativity
-
-```rust
-use hegel::generators::{self, Generator};
-
-#[hegel::test]
-fn test_set_union_commutes(tc: hegel::TestCase) {
-    let a: HashSet<i32> = tc.draw(generators::hashsets(generators::integers()));
-    let b: HashSet<i32> = tc.draw(generators::hashsets(generators::integers()));
-    assert_eq!(a.union(&b).collect::<HashSet<_>>(),
-               b.union(&a).collect::<HashSet<_>>());
-}
-```
-
-### Idempotence (normalization / case conversion)
-
-```rust
-use hegel::generators::{self, Generator};
-
-#[hegel::test(test_cases = 1000)]
-fn test_normalize_idempotent(tc: hegel::TestCase) {
-    let s: String = tc.draw(generators::text());  // full Unicode, not ASCII
-    let once = normalize(&s);
-    let twice = normalize(&once);
-    assert_eq!(once, twice, "not idempotent for {:?}", s);
-}
-```
-
-### Parse robustness
-
-```rust
-use hegel::generators::{self, Generator};
-
-#[hegel::test(test_cases = 1000)]
-fn test_parse_no_panic(tc: hegel::TestCase) {
-    let s: String = tc.draw(generators::text());
-    let _ = MyType::from_str(&s);  // should never panic, just return Err
-}
-```
-
-### Wrapping arithmetic in test values
-
-When computing test values from generated data, use wrapping operations to avoid
-panics in your *test* code:
-
-```rust
-// BAD — panics when k is near i32::MAX
-map.insert(k, k * 10);
-
-// GOOD — wrapping prevents test overflow
-map.insert(k, k.wrapping_mul(10));
-
-// ALSO GOOD — use smaller types for intermediate computation
-let k = tc.draw(generators::integers::<i16>()) as i32;
-let k_squared = k * k;  // can't overflow i32
-```
-
 ### Testing code that uses randomness
 
 ```rust
@@ -765,8 +567,7 @@ fn test_sample_returns_valid_index(tc: hegel::TestCase) {
 }
 ```
 
-If the code does rejection sampling and the test hangs with the default mode,
-switch to `use_true_random()`:
+If the code does rejection sampling and the test hangs with the default mode, switch to `use_true_random()`:
 
 ```rust
 #[hegel::test]
@@ -781,63 +582,47 @@ fn test_rejection_sampler(tc: hegel::TestCase) {
 }
 ```
 
-Do NOT do this (defeats shrinking):
+### Wrapping arithmetic in test values
+
+When computing test values from generated data, use wrapping operations to avoid panics in your *test* code:
 
 ```rust
-// BAD: hegel can only shrink the seed, not the random decisions
-#[hegel::test]
-fn test_sample_bad(tc: hegel::TestCase) {
-    let seed = tc.draw(generators::integers::<u64>());
-    let mut rng = ChaCha8Rng::seed_from_u64(seed);  // WRONG
-    let idx = sample(&weights, &mut rng);
-    assert!(idx < weights.len());
-}
+// BAD — panics when k is near i32::MAX
+map.insert(k, k * 10);
+
+// GOOD — wrapping prevents test overflow
+map.insert(k, k.wrapping_mul(10));
+
+// ALSO GOOD — use smaller types for intermediate computation
+let k = tc.draw(generators::integers::<i16>()) as i32;
+let k_squared = k * k;  // can't overflow i32
 ```
 
 ## Gotchas
 
-1. **Import `Generator` trait for combinators.** `.map()`, `.filter()`,
-   `.flat_map()`, and `.boxed()` require `use hegel::generators::Generator`.
-   Without the import, these methods won't be available.
+1. **Import `Generator` trait for combinators.** `.map()`, `.filter()`, `.flat_map()`, and `.boxed()` require `use hegel::generators::Generator`. Without the import, these methods won't be available.
 
-2. **`#[hegel::test]` replaces `#[test]`, not both.** Don't write
-   `#[test] #[hegel::test]` — the hegel macro already generates the test
-   attribute.
+2. **`#[hegel::test]` replaces `#[test]`, not both.** Don't write `#[test] #[hegel::test]` — the hegel macro already generates the test attribute.
 
-3. **Add `.hegel/` to `.gitignore`.** Hegel creates a `.hegel/` directory for
-   caching the server binary and storing the database of previous failures. Add
-   it to `.gitignore`.
+3. **Add `.hegel/` to `.gitignore`.** Hegel creates a `.hegel/` directory for caching the server binary and storing the database of previous failures. Add it to `.gitignore`.
 
-4. **Float defaults include NaN and infinity.** `generators::floats::<f64>()`
-   with no bounds generates NaN and infinity by default. If your code doesn't
-   handle these, use `.allow_nan(false)` and/or `.allow_infinity(false)` — but
-   consider whether the code *should* handle them first.
+4. **Float defaults include NaN and infinity.** `generators::floats::<f64>()` with no bounds generates NaN and infinity by default. If your code doesn't handle these, use `.allow_nan(false)` and/or `.allow_infinity(false)` — but consider whether the code *should* handle them first.
 
-5. **Type annotations are required for numeric generators.**
-   `generators::integers()` won't compile — you must write
-   `generators::integers::<i32>()` (or whatever type you need).
+5. **Type annotations are required for numeric generators.** `generators::integers()` won't compile — you must write `generators::integers::<i32>()` (or whatever type you need).
 
-6. **Excessive assume/filter rejections fail the test.** If `tc.assume()` or
-   `.filter()` rejects too many inputs, Hegel gives up. Restructure your
-   generators to produce valid inputs directly.
+6. **Excessive assume/filter rejections fail the test.** If `tc.assume()` or `.filter()` rejects too many inputs, Hegel gives up. Restructure your generators to produce valid inputs directly.
 
-7. **`note()` only prints on the final replay.** Don't rely on `tc.note()` for
-   progress logging — it only appears when displaying the minimal
-   counterexample.
+7. **`note()` only prints on the final replay.** Don't rely on `tc.note()` for progress logging — it only appears when displaying the minimal counterexample.
 
-8. **`target()` is not yet available** in the Rust SDK. It is planned for a
-   future release.
+8. **`target()` is not yet available** in Hegel-rust. It is planned for a future release.
 
-9. **Default collection sizes are small.** `generators::vecs(gen)` with no
-   bounds rarely produces 100+ elements. If you need large collections (e.g.,
-   to test tree traversal at depth), draw the size separately:
+9. **Default collection sizes are small.** `generators::vecs(gen)` with no bounds rarely produces 100+ elements. If you need large collections (e.g., to test tree traversal at depth), draw the size separately:
    ```rust
    let n = tc.draw(generators::integers::<usize>().max_value(300));
    let keys: Vec<i32> = tc.draw(generators::vecs(generators::integers()).min_size(n));
    ```
 
-10. **Use `.unique()` for map/set key generation.** When testing ordered maps
-    or sets, generate unique keys to avoid ambiguity about which value wins:
+10. **Use `.unique()` for map/set key generation.** When testing ordered maps or sets, generate unique keys to avoid ambiguity about which value wins:
     ```rust
     let keys: Vec<i32> = tc.draw(generators::vecs(generators::integers::<i32>())
         .max_size(50).unique());
@@ -845,9 +630,7 @@ fn test_sample_bad(tc: hegel::TestCase) {
 
 ## Stateful Testing
 
-Hegel supports stateful (model-based) testing via `#[hegel::state_machine]`.
-Define rules (actions) and invariants (assertions checked after each rule),
-then run the state machine.
+Hegel supports stateful (model-based) testing via `#[hegel::state_machine]`. Define rules (actions) and invariants (assertions checked after each rule), then run the state machine.
 
 ### Defining a State Machine
 
@@ -895,17 +678,13 @@ fn test_integer_stack(tc: TestCase) {
 }
 ```
 
-- **`#[rule]`** methods are actions that can be applied. They take `&mut self`
-  and `TestCase`. Use `tc.assume()` to skip a rule when it doesn't apply
-  (e.g., can't pop from an empty stack).
-- **`#[invariant]`** methods are checked after every successful rule. They take
-  `&self` and `TestCase`.
+- **`#[rule]`** methods are actions that can be applied. They take `&mut self` and `TestCase`. Use `tc.assume()` to skip a rule when it doesn't apply (e.g., can't pop from an empty stack).
+- **`#[invariant]`** methods are checked after every successful rule. They take `&self` and `TestCase`.
 - Call `hegel::stateful::run(machine, tc)` from a `#[hegel::test]` to execute.
 
 ### Variables (Pools)
 
-For tests that need to track dynamically created resources (accounts, handles,
-keys), use `Variables`:
+For tests that need to track dynamically created resources (accounts, handles, keys), use `Variables`:
 
 ```rust
 use hegel::stateful::{Variables, variables};

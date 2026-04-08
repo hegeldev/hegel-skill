@@ -1,6 +1,6 @@
 # hegel-skill
 
-An [Agent Skill](https://agentskills.io) that teaches agents how to write property-based tests using [Hegel](https://github.com/hegeldev/hegel-core). 
+An [Agent Skill](https://agentskills.io/home) that teaches agents how to write property-based tests using [Hegel](https://github.com/hegeldev/hegel-core).
 
 When you ask an agent to write property-based tests, this skill provides:
 
@@ -9,26 +9,22 @@ When you ask an agent to write property-based tests, this skill provides:
 - Language-specific API references and idiomatic patterns
 - Guidance on evolving existing unit tests into property-based tests
 
-This currently only supports [hegel-rust](https://github.com/hegeldev/hegel-rust) but we will update it for each language's Hegel library as new ones come out.
+This currently supports [hegel-rust](https://github.com/hegeldev/hegel-rust) and [hegel-go](https://github.com/hegeldev/hegel-go). We will update it for each language's Hegel library as new ones come out.
 
 ## Installation
 
-This should work with Claude Code, Codex, and any agent that supports the Agent Skills standard.
+`hegel-skill` works with Claude Code, Codex, and any agent that supports the Agent Skills standard.
 
 ### Claude Code
 
-Add the marketplace and install:
+Add this repository as a marketplace, and install the skill:
 
 ```bash
 /plugin marketplace add hegeldev/hegel-skill
 /plugin install hegel-skill@hegeldev-hegel-skill
 ```
 
-Or for local development:
-
-```bash
-claude --plugin-dir path/to/hegel-skill
-```
+Or see https://code.claude.com/docs/en/skills for local installation instructions.
 
 ### Codex
 
@@ -38,22 +34,8 @@ Use the built-in skill installer:
 $skill-installer install https://github.com/hegeldev/hegel-skill/tree/main/skills/hegel
 ```
 
-Or copy the skill directory manually:
+Or see https://developers.openai.com/codex/skills for local installation instructions.
 
-```bash
-cp -r skills/hegel ~/.codex/skills/hegel
-```
+### Other agents
 
-### Any Agent
-
-Copy the skill into your project's `.agents/skills/` directory:
-
-```bash
-cp -r skills/hegel .agents/skills/hegel
-```
-
-Or use npx:
-
-```bash
-npx skills add hegeldev/hegel-skill
-```
+Varies by installation. Refer to the docs of your agentic tool of choice.
