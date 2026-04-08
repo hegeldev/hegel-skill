@@ -1,256 +1,113 @@
-# Evolving Example-Based Tests into Property-Based Tests
+# Evolving Unit Tests into Property-Based Tests
 
-Existing unit tests are often the best starting point for property-based tests.
-They encode domain knowledge about what the code should do, and they frequently
-contain implicit properties that can be generalized.
+This guide helps you recognize what property a unit test is hiding and translate it into a hegel PBT. Examples use pseudocode — see the language reference for exact syntax.
 
-## Good Candidates for Evolution
+## Recognizing Properties in Unit Tests
 
-Look for tests that:
+### Multiple tests, same assertion shape
 
-- **Have multiple similar test cases.** Three tests for `parse("1")`,
-  `parse("42")`, `parse("-7")` suggest a round-trip property: parse then
-  format recovers the original.
-- **Use simple input types.** Tests with integer, string, or collection inputs
-  are easy to parameterize with generators.
-- **Test round-trip behavior.** `assert_eq!(decode(encode(x)), x)` is already
-  a property — just replace `x` with a generator.
-- **Contain existing randomness or hardcoded seeds.** Tests that create RNGs
-  with fixed seeds (`ChaCha8Rng::seed_from_u64(42)`) or use `rand` are
-  excellent candidates. Replace the manual RNG with `generators::randoms()`
-  so hegel controls the randomness and can shrink failures.
-- **Test invariants across examples.** If every test case checks the same
-  condition (e.g., output is sorted, length is preserved), that's a property.
-- **Parameterized tests over hardcoded inputs.** Tests that loop over a list of
-  specific sizes, distributions, or configurations should generate those
-  parameters instead.
-
-## Poor Candidates
-
-- **Exact-output tests.** `assert_eq!(render(doc), "<html>...")` depends on a
-  specific output format that's hard to express as a property.
-- **Complex setup with fixtures.** Tests that require database state, network
-  mocks, or elaborate setup are harder to parameterize (though not impossible).
-- **UI / snapshot tests.** Visual regression tests don't have obvious
-  properties.
-- **Tests of specific error messages.** Checking exact error strings is a
-  unit test concern; PBTs work better for testing that errors are *raised*
-  rather than what they *say*.
-
-## The Evolution Process
-
-### Step 1: Identify the Property
-
-Read the existing tests and ask: **what is true across all these examples?**
-
-```rust
-// Before: three unit tests
-#[test]
-fn test_abs_positive() { assert_eq!(my_abs(5), 5); }
-#[test]
-fn test_abs_negative() { assert_eq!(my_abs(-3), 3); }
-#[test]
-fn test_abs_zero() { assert_eq!(my_abs(0), 0); }
+```pseudocode
+# Before: three tests that all do the same thing with different inputs
+test parse_1:  assert parse("1") == 1
+test parse_42: assert parse("42") == 42
+test parse_neg: assert parse("-7") == -7
 ```
 
-The property: `my_abs(x) >= 0` for all `x`, and `my_abs(x) == my_abs(-x)`.
+These are all instances of a **roundtrip** property: `parse(format(n)) == n`.
 
-### Step 2: Parameterize
-
-Replace concrete values with generated ones:
-
-```rust
-#[hegel::test]
-fn test_abs_non_negative(tc: hegel::TestCase) {
-    let x = tc.draw(generators::integers::<i64>());
-    assert!(my_abs(x) >= 0);
-}
-
-#[hegel::test]
-fn test_abs_symmetric(tc: hegel::TestCase) {
-    let x = tc.draw(generators::integers::<i64>());
-    assert_eq!(my_abs(x), my_abs(-x));
-}
+```pseudocode
+# After
+n = tc.draw(integers())
+assert parse(format(n)) == n
 ```
 
-### Step 3: Choose Generators
+### Loop over hardcoded examples
 
-Start with the **broadest generator that matches the function's input type**.
-Do not restrict the range to match the original test's examples. The whole
-point is to explore inputs the original author didn't think of.
-
-### Step 4: Adjust the Oracle
-
-Unit tests often compare against a hardcoded expected value. PBTs need an
-oracle that works for any input:
-
-- **Use a reference implementation:** `assert_eq!(my_sort(v), v.sort())`
-- **Use a structural property:** `assert!(is_sorted(my_sort(v)))`
-- **Use a relationship:** `assert_eq!(my_abs(x), my_abs(-x))`
-
-If you can't find a general oracle, the test may not be a good PBT candidate.
-
-### Step 5: Handle Edge Cases
-
-When the PBT finds failures on inputs the unit tests didn't cover, decide:
-
-- **Is this a real bug?** Fix the code. This is PBT doing its job.
-- **Is this outside the function's domain?** Add a constraint — but document
-  why, and check whether the function's documentation should be updated.
-
-## Example Transformations
-
-### Parsing round-trip
-
-Before:
-
-```rust
-#[test]
-fn test_parse_int() {
-    assert_eq!("123".parse::<i32>().unwrap(), 123);
-    assert_eq!("-1".parse::<i32>().unwrap(), -1);
-    assert_eq!("0".parse::<i32>().unwrap(), 0);
-}
+```pseudocode
+# Before
+for (input, expected) in [("a", "A"), ("hello", "HELLO"), ("ABC", "ABC")]:
+    assert to_upper(input) == expected
 ```
 
-After:
+The loop body is the property — but using `expected` as the oracle won't generalize. Look for a structural property instead: the output should equal the input when compared case-insensitively, and every character in the output should be uppercase.
 
-```rust
-#[hegel::test]
-fn test_int_display_parse_round_trip(tc: hegel::TestCase) {
-    let n = tc.draw(generators::integers::<i32>());
-    let s = n.to_string();
-    assert_eq!(s.parse::<i32>().unwrap(), n);
-}
+```pseudocode
+# After
+s = tc.draw(text())
+result = to_upper(s)
+assert result.lower() == s.lower()  # case-insensitive equality
 ```
 
-### Collection operations
+### Tests asserting "no error" on various inputs
 
-Before:
-
-```rust
-#[test]
-fn test_push_pop() {
-    let mut stack = Stack::new();
-    stack.push(1);
-    stack.push(2);
-    assert_eq!(stack.pop(), Some(2));
-    assert_eq!(stack.pop(), Some(1));
-    assert_eq!(stack.pop(), None);
-}
+```pseudocode
+# Before
+test parse_empty:   assert parse("").is_ok()
+test parse_garbage: assert parse("xyz").is_ok() or parse("xyz").is_err()  # just shouldn't crash
+test parse_unicode: assert parse("café").is_ok() or ...
 ```
 
-After:
+This is a **robustness** property: the function should handle any input without panicking.
 
-```rust
-#[hegel::test]
-fn test_push_then_pop_returns_last(tc: hegel::TestCase) {
-    let items: Vec<i32> = tc.draw(generators::vecs(generators::integers()));
-    let mut stack = Stack::new();
-    for &item in &items {
-        stack.push(item);
-    }
-    // Property: popping returns items in reverse order
-    for &item in items.iter().rev() {
-        assert_eq!(stack.pop(), Some(item));
-    }
-    assert_eq!(stack.pop(), None);
-}
+```pseudocode
+# After
+s = tc.draw(text())
+_ = parse(s)  # should never panic, error results are fine
 ```
 
-### Encoding/decoding
+### Setup, operations, check final state
 
-Before:
-
-```rust
-#[test]
-fn test_base64_encode() {
-    assert_eq!(base64_encode(b"hello"), "aGVsbG8=");
-    assert_eq!(base64_encode(b""), "");
-    assert_eq!(base64_encode(b"a"), "YQ==");
-}
+```pseudocode
+# Before
+test stack_operations:
+    s = Stack()
+    s.push(1)
+    s.push(2)
+    assert s.pop() == 2
+    assert s.pop() == 1
+    assert s.is_empty()
 ```
 
-After:
+This is a **stateful model test** candidate. The test encodes a specific operation sequence — generalize it by drawing random operations. See the stateful testing section in the language reference.
 
-```rust
-#[hegel::test]
-fn test_base64_round_trip(tc: hegel::TestCase) {
-    let data: Vec<u8> = tc.draw(generators::binary());
-    let encoded = base64_encode(&data);
-    let decoded = base64_decode(&encoded).unwrap();
-    assert_eq!(decoded, data);
-}
+### Tests with manually seeded RNGs
 
-#[hegel::test]
-fn test_base64_output_is_valid(tc: hegel::TestCase) {
-    let data: Vec<u8> = tc.draw(generators::binary());
-    let encoded = base64_encode(&data);
-    // Property: output contains only valid base64 characters
-    assert!(encoded.chars().all(|c| c.is_ascii_alphanumeric() || c == '+' || c == '/' || c == '='));
-}
+```pseudocode
+# Before
+test sample_distribution:
+    rng = ChaChaRng(seed=42)
+    result = sample(weights, rng)
+    assert result in valid_range
 ```
 
-### Sorting
+Replace the seeded RNG with hegel's random generator. The fixed seed gives reproducibility but prevents exploration — hegel gives you both exploration and shrinkable counterexamples.
 
-Before:
+### Multiple tests asserting the same invariant
 
-```rust
-#[test]
-fn test_sort() {
-    assert_eq!(my_sort(&mut [3, 1, 2]), [1, 2, 3]);
-    assert_eq!(my_sort(&mut [1]), [1]);
-    assert_eq!(my_sort(&mut Vec::<i32>::new()), Vec::<i32>::new());
-}
+```pseudocode
+# Before
+test sort_empty:    assert sort([]) == []
+test sort_single:   assert sort([5]) == [5]
+test sort_reversed: assert sort([3,2,1]) == [1,2,3]
+test sort_sorted:   assert sort([1,2,3]) == [1,2,3]
 ```
 
-After:
+Every test checks that the output is sorted and is a permutation of the input. Those are the properties.
 
-```rust
-#[hegel::test]
-fn test_sort_is_sorted(tc: hegel::TestCase) {
-    let v: Vec<i32> = tc.draw(generators::vecs(generators::integers()));
-    let sorted = my_sort(&v);
-    for w in sorted.windows(2) {
-        assert!(w[0] <= w[1]);
-    }
-}
+```pseudocode
+# After: two separate properties
+v = tc.draw(lists(integers()))
+result = sort(v)
+assert is_sorted(result)
 
-#[hegel::test]
-fn test_sort_is_permutation(tc: hegel::TestCase) {
-    let v: Vec<i32> = tc.draw(generators::vecs(generators::integers()));
-    let sorted = my_sort(&v);
-    let mut expected = v.clone();
-    expected.sort();
-    assert_eq!(sorted, expected);
-}
+v = tc.draw(lists(integers()))
+assert sorted(sort(v)) == sorted(v)  # same elements
 ```
 
-## Where to Put Evolved Tests
+## What to Do with the Old Tests
 
-**Modify the existing test file.** If the unit tests live in `test_foo.rs`,
-add or replace with hegel tests in `test_foo.rs`. Do not create a separate
-`test_hegel.rs` — property-based tests are regular tests and belong with the
-code they cover.
+**Usually the PBT subsumes them.** If your PBT covers the full input space, the specific examples in the unit tests are redundant — hegel will explore those cases and many more.
 
-## Research Insights
+**Keep edge-case tests that serve as documentation.** If a unit test encodes a subtle edge case that was discovered through a bug report, it may be worth keeping as documentation even if the PBT covers it. The unit test communicates "this specific case matters" in a way a PBT doesn't.
 
-Studies of evolving unit tests into property-based tests have found:
-
-- **Most PBTs use simple generators.** Around 65% of property-based tests in
-  practice use only basic generators (integers, strings, lists) without complex
-  composition. Don't over-engineer generators.
-
-- **PBTs find bugs that unit tests miss.** Even when unit tests pass, PBTs
-  can discover failures — particularly around boundary conditions, empty inputs,
-  and large values. In one study, PBTs found bugs in ~2% of cases where the
-  corresponding unit tests all passed.
-
-- **Parameterized unit tests are a stepping stone.** If you can't immediately
-  see the right property, start by parameterizing the test (replacing concrete
-  values with generated ones and keeping a simple oracle). You can refine the
-  property later.
-
-- **The biggest gain is coverage of edge cases.** PBTs typically add modest
-  line coverage over unit tests, but their value is in exercising combinations
-  and boundary conditions that humans don't think to write by hand.
+**Replace inline, don't create a new file.** Add hegel tests in the same file where the unit tests live. Either replace the unit tests or add the PBTs alongside them.

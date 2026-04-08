@@ -1,31 +1,30 @@
 ---
 name: hegel
 description: >
-  Write property-based tests using Hegel. Triggers on: "property-based tests",
-  "PBT", "hegel tests", "test with random inputs",
-  "generative tests",  "test properties", "randomized testing"
+  Write property-based tests using Hegel across Rust and Go projects. Use this
+  skill whenever the user asks to write tests, add test coverage, or improve
+  testing for functions, modules, or libraries — especially when the code has
+  properties like round-trips, invariants, or contracts that hold across many
+  inputs. Also triggers on: "property-based tests", "PBT", "hegel", "fuzz",
+  "generative tests", "randomized testing", "test with random inputs",
+  "shrinking", or when existing tests use proptest, quickcheck, rapid, or gopter.
 ---
 
 # Hegel: Property-Based Testing
 
-Hegel is a universal family of property-based testing, supporting a variety of
-languages all powered by Hypothesis. Tests integrate with standard test runners
-(e.g. `cargo test`, `pytest`, `jest`, etc.). Hegel generates random inputs
-for your code and automatically shrinks failing cases to minimal counterexamples.
+Hegel is a family of property-based testing libraries supporting multiple languages, powered by Hypothesis. Tests integrate with standard language test runners. Hegel generates random inputs for your code and automatically shrinks failing cases to minimal counterexamples.
+
+Even when PBTs add modest line coverage over unit tests, their value is in exercising combinations and boundary conditions that humans don't think to write by hand.
+
+**Code examples in this file use Python-like pseudocode to illustrate concepts.** For exact API and syntax, load the language-specific reference (see step 1 of the workflow).
 
 ## Workflow
 
 Follow these steps when writing property-based tests.
 
-### 1. Detect Language and Load References
+### 1. Load the Language Reference
 
-Identify the project language from build files:
-
-| File | Language | Reference |
-|------|----------|-----------|
-| `Cargo.toml` | Rust | `references/rust.md` |
-
-Load the corresponding reference file for API details and idiomatic patterns.
+Determine the project language and load the corresponding reference from `references/<language>/reference.md` for API details and idiomatic patterns.
 
 ### 2. Explore the Code Under Test
 
@@ -48,43 +47,32 @@ Look for properties that are:
 
 Write one test per property. Don't cram multiple properties into one test.
 
+See the **Property Catalogue** below for a taxonomy of what to look for.
+
 ### 4. Check for Existing Tests to Evolve or Port
 
-Before writing tests from scratch, **always** check existing tests:
+Before writing tests from scratch, check what already exists.
 
-- **Existing PBTs in another framework** (proptest, quickcheck, etc.) should be
-  ported to hegel. Load `references/porting.md` for general guidance and the
-  language-specific porting reference (e.g., `references/porting-rust.md`).
-  Don't carry over narrow generator bounds from the old framework — use broader
-  generators unless bounds are justified by the function's contract.
-- **Unit tests and example-based tests** can often be evolved into PBTs. Load
-  `references/evolving-tests.md` for guidance. Tests with hardcoded seeds,
-  parameterized examples, or multiple similar test cases are prime candidates.
-- **Tests that use `rand` with fixed seeds** are especially good candidates —
-  the randomness should come from hegel instead so failures produce shrinkable
-  counterexamples.
+**Existing PBTs in another framework** (proptest, quickcheck, rapid, gopter, etc.) should be ported to hegel. Load the language-specific porting reference (`references/<language>/porting.md`). Key things to know about hegel when porting:
 
-When you evolve an existing test, **modify the existing test file** rather than
-creating a new one. Add hegel tests alongside (or replacing) the existing tests
-in the same file where the original tests live. Do not create a separate
-`test_hegel.rs` or similar — property-based tests are tests like any other and
-belong with the code they're testing.
+- **Hegel is imperative.** Most PBT libraries declare what to generate in a function signature or strategy combinator. In hegel, your test receives a test case handle and calls `tc.draw()` whenever it needs a value — you can draw conditionally, in loops, and have later draws depend on earlier values without needing `flat_map`.
+- **Shrinking is automatic.** Hegel's shrinking is handled server-side by Hypothesis. You don't implement shrink logic or define shrinking strategies.
+- **Standard assertions.** Use the language's normal assertion mechanism. No special `prop_assert!` or return-a-bool pattern needed.
+- **Broaden your generators.** Many existing PBTs use narrow input ranges because shrinking was slow or unreliable. Hegel's shrinking is more robust — try broader generators than the originals.
+
+**Unit tests and example-based tests** can often be evolved into PBTs. Tests with hardcoded seeds, parameterized examples, or multiple similar test cases are prime candidates. Load `references/evolving-tests.md` for detailed guidance on recognizing what property a unit test is hiding. If you can't immediately see the right property, start by parameterizing the test — replace concrete values with generated ones and keep a simple oracle. You can refine the property later.
+
+**Tests that use `rand` with fixed seeds** are especially good candidates — the randomness should come from hegel instead so failures produce shrinkable counterexamples.
+
+When you evolve an existing test, **modify the existing test file** rather than creating a new one. Property-based tests are tests like any other and belong with the code they're testing. Do not create a separate file for hegel tests.
 
 ### 5. Write the Tests
 
 For each property:
 
-1. **Add tests to the appropriate existing test file.** If there's already a
-   `test_foo.rs` covering the module, add hegel tests there. Only create a new
-   file if no relevant test file exists.
-2. Choose the **simplest possible generators** — start with no bounds, unless
-   bounds are logically necessary (e.g. if a number has to be non-zero it's
-   fine to force it to be, but lists should not have `max_size` set unless there
-   is a compelling correctness reason to set them or poor performance has been
-   observed when actually running the test)
-3. Draw values using `tc.draw()`
-4. Run the code under test
-5. Assert the property
+1. **Add tests to the appropriate existing test file.** Only create a new file if no relevant test file exists.
+2. Choose the **simplest possible generators** — see Generator Discipline below.
+3. Draw values, run the code under test, and assert the property.
 
 ### 6. Run and Reflect
 
@@ -94,283 +82,242 @@ Run the tests. When a test fails, ask:
 - **Is the property unsound?** If you asserted something the code never promised, fix the test.
 - **Is the generator too broad?** Only if the failing input is genuinely outside the function's domain, add constraints. Investigate before constraining.
 
-## Property Categories
+### When NOT to Write PBTs
 
-Use this taxonomy to identify what to test. Not every category applies to every
-function — pick the ones supported by evidence.
+Property-based tests aren't always the right tool. Prefer unit tests when:
+
+- **The test checks exact output.** `assert render(doc) == "<html>..."` depends on a specific output format — there's no general property to check.
+- **Complex setup dominates.** Tests requiring database state, network mocks, or elaborate fixtures are hard to parameterize.
+- **The test checks specific error messages.** Exact error string checks are a unit test concern. PBTs are better for testing that errors are *raised*, not what they *say*.
+- **No property is apparent.** If you can't find a meaningful property after reading the code, don't force it. A good unit test beats a contrived PBT.
+
+## Property Catalogue
+
+Use this catalogue to identify what to test. Not every category applies to every function — pick the ones supported by evidence from the code.
+
+The first five patterns are ordered by how often they've found real bugs in practice.
+
+### Tier 1: High-Value Patterns
+
+**Model tests** — For any data structure, the highest-value first test is a **stateful model test**: define rules for each operation (insert, remove, get, etc.), run them against both the library under test and a known-good reference (the "model"), and assert they agree after every operation. Use hegel's stateful testing support (see the language reference) rather than hand-rolling the operation loop.
+
+The exact syntax varies significantly by language — check the language reference for the stateful testing API. Conceptually, a model test looks like:
+
+```pseudocode
+state_machine MyMapTest:
+    subject = MyMap()
+    model = HashMap()
+
+    rule insert():
+        k = tc.draw(integers())
+        v = tc.draw(integers())
+        subject.insert(k, v)
+        model.insert(k, v)
+
+    rule remove():
+        k = tc.draw(integers())
+        subject.remove(k)
+        model.remove(k)
+
+    rule get():
+        k = tc.draw(integers())
+        assert subject.get(k) == model.get(k)
+
+    invariant agrees:
+        assert subject == model
+```
+
+Choose the right model: `Vec` for sequential containers, `HashMap` for hash maps, `BTreeMap`/sorted map for ordered maps, `HashSet`/set for unordered sets.
+
+**Idempotence tests** — Any normalization, case conversion, or formatting function should satisfy `f(f(x)) == f(x)`. Use full Unicode text generators (not ASCII-only) because Unicode edge cases like `ß` -> `SS` and combining characters are where bugs hide.
+
+```pseudocode
+s = tc.draw(text())
+once = normalize(s)
+twice = normalize(once)
+assert once == twice
+```
+
+**Parse robustness** — Parsers (`from_str`, `parse`, `decode`) should handle all input without panicking. The property is simple: it should never crash, even on garbage input.
+
+```pseudocode
+s = tc.draw(text())
+_ = MyType.parse(s)  # should return an error, never panic
+```
+
+**Roundtrip tests** — `parse(format(x)) == x` for any serialize/deserialize pair. Test with the full input domain. Bugs hide at zero (scientific notation edge cases), large integers (precision loss through f64 for values > 2^53), and unusual string content.
+
+```pseudocode
+n = tc.draw(integers())
+s = format(n)
+assert parse(s) == n
+```
+
+**Boundary value tests** — Integer boundary values (`MIN`, `MAX`, `0`) are where overflow bugs hide. Don't add bounds to avoid them — they ARE the test. Negating `MIN` overflows, intermediate products overflow, GCD/LCM computations overflow on boundary inputs.
+
+```pseudocode
+a = tc.draw(integers())  # includes MIN, MAX, 0
+b = tc.draw(integers())
+tc.assume(b != 0)
+result = my_numeric_op(a, b)  # should not overflow/panic
+```
+
+### Tier 2: General Property Categories
 
 | Category | Description | Example |
 |----------|-------------|---------|
-| **Round-trip** | encode then decode recovers the original | `deserialize(serialize(x)) == x` |
-| **Idempotence** | applying twice equals applying once | `sort(sort(xs)) == sort(xs)` |
 | **Commutativity** | order of operations doesn't matter | `a + b == b + a` or `f(g(x)) == g(f(x))` |
 | **Invariant preservation** | an operation maintains a structural property | `insert into BST preserves ordering` |
-| **Oracle / reference impl** | compare against a known-correct implementation | `my_sort(xs) == xs.sort()`, or comparing against an unoptimised implementation |
+| **Oracle / reference impl** | compare against a known-correct implementation | `my_sort(xs) == std_sort(xs)` |
 | **Monotonicity** | more input means more (or equal) output | `len(xs ++ ys) >= len(xs)` |
 | **Bounds / contracts** | output stays within documented limits | `clamp(x, lo, hi)` is in `[lo, hi]` |
-| **No-crash / robustness** | function handles all valid inputs without panicking | `parse(arbitrary_string)` doesn't panic |
+| **No-crash / robustness** | function handles all valid inputs without panicking | `parse(arbitrary_string)` doesn't crash |
 | **Equivalence** | two implementations produce the same result | `iterative_fib(n) == recursive_fib(n)` |
-| **Model-based** | operations on real system match a simplified model | `HashMap ops match Vec<(K,V)> model` |
 | **Consistency** | related APIs in the same library agree | `string_width(s) == sum(char_width(c) for c in s)` |
-| **Precision preservation** | numeric values survive format conversions | `parse(to_string(n)) == n` for all `i64` |
+| **Large input sizes** | exercise deep structure paths that small inputs miss | draw size separately, force 50-200+ elements for trees/tries |
+| **Feature flag testing** | non-default features are often less tested | enable SIMD, nightly, or experimental features and run tests |
 
-## High-Value Patterns (Field-Tested)
+### Bug Patterns by Category
 
-These patterns are ranked by how often they found real bugs when tested across
-many popular Rust crate libraries. See `references/field-tested-patterns.md`
-for detailed examples.
+| Category | What to look for |
+|---|---|
+| **Integer overflow** | Boundary values (MIN, MAX, 0) in arithmetic, GCD, negation, display |
+| **Idempotence failure** | Case conversion / normalization with Unicode (ß -> SS), word splitting on case transitions |
+| **Precision loss** | Numbers routed through f64 lose precision for integers > 2^53 |
+| **Roundtrip failure** | Format/parse on edge cases: zero, empty strings, unusual path components |
+| **Parse panic** | `from_str` delegates to a constructor that panics instead of returning Err |
+| **Stale state** | Update operations that modify one index but don't clean up the old entry in another |
+| **Unicode line breaks** | `\u{85}` (NEL), `\u{2028}` (LS), `\u{2029}` (PS) treated inconsistently as line breaks |
+| **SIMD divergence** | SIMD code path produces different results than the scalar fallback |
+| **Deep structure bugs** | Traversal that only fails when data structure has multiple internal levels (50-200+ elements) |
 
-### 1. Model Tests (Highest Value for Data Structures)
-
-For any data structure, the highest-value first test is a **model test** — run
-the same operations on the library under test and a known-good reference (usually
-a std type), then assert they agree after every operation.
-
-Choose the right oracle:
-- `Vec` for sequential containers (fixed-capacity vecs, small vecs)
-- `HashMap` for hash maps (alternative/concurrent hash maps)
-- `BTreeMap` for ordered maps (tree maps, persistent maps)
-- `BTreeSet` for ordered sets / bitmaps (compressed bitmaps, tree sets)
-- `HashSet` for unordered sets (indexed sets, bit sets)
-
-### 2. Idempotence Tests (Highest Value for String/Text Processing)
-
-Any normalization, case conversion, or formatting function should be idempotent:
-`f(f(x)) == f(x)`. Use `generators::text()` (not ASCII-only generators) because
-Unicode edge cases like `ß` → `SS` and combining characters are where bugs hide.
-
-### 3. Parse Robustness (Universal — Test Every Parser)
-
-Every `from_str`, `parse`, or `decode` function should be tested with
-`generators::text()`. The property is simple: it should never panic. Parsers
-that delegate to constructors which panic on invalid values (instead of returning
-errors) are a common source of bugs.
-
-### 4. Roundtrip Tests (High Value for Serialization)
-
-`parse(format(x)) == x` for any serialize/deserialize pair. Test with the full
-input domain — don't restrict to "reasonable" values. Bugs hide at boundaries
-like zero (e.g. scientific notation missing the coefficient), large integers
-(precision loss through f64 intermediaries for values > 2^53), and unusual
-string content (double slashes in paths, control characters).
-
-### 5. Boundary Value Tests (High Value for Numeric Code)
-
-Integer operations should be tested with `MIN`, `MAX`, `0`, and unconstrained
-ranges. Negating `i32::MIN` overflows, dividing by `i64::MIN` overflows, and
-many libraries forget to handle these. Don't add `.min_value(-100).max_value(100)`
-— those bounds hide real bugs.
-
-## Choosing Properties
+### Choosing Properties
 
 Properties must be **evidence-based**. Find evidence in:
 
-- **Names and Type signatures**: A function `fn merge(a: Vec<T>, b: Vec<T>) -> Vec<T>` implies the output length might equal the sum of input lengths.
+- **Names and type signatures**: A function `merge(a: List, b: List) -> List` implies the output length might equal the sum of input lengths.
 - **Docstrings and comments**: "Returns a sorted list" directly gives you an invariant.
-- **Assertions and debug_asserts in the source**: These are properties the author already identified, and do not need to be duplicated in the tests, but may suggest other invariants.
-- **Usage patterns**: If callers always assume a result is non-empty, assert that the result is always non-empty.
+- **Assertions and debug checks in the source**: These are properties the author already identified — they may suggest other invariants.
+- **Usage patterns**: If callers always assume a result is non-empty, assert that.
 - **Existing tests**: Unit tests often encode specific instances of general properties.
 
-Err on the side of creating more properties rather than fewer, and if they fail investigate whether the failure is legitimate behaviour or not.
+Err on the side of creating more properties rather than fewer, and if they fail investigate whether the failure is legitimate behavior or not.
 
-**Beware of properties that seem universal but aren't.** Read the docs carefully
-before asserting a property. Examples from real testing:
-- Grapheme-based string reverse is NOT an involution (`reverse(reverse("\n\r"))
-  ≠ "\n\r"` because `\r\n` is one grapheme cluster while `\n\r` is two).
-- A method called `difference` might mean symmetric difference (A △ B), not set
-  difference (A \ B) — check the docs.
-- A function documented as "returns the largest key ≤ k" means ≤, not <.
+**Beware of properties that seem universal but aren't.** Read the docs carefully before asserting a property. Examples from real testing:
+- Grapheme-based string reverse is NOT an involution (`reverse(reverse("\n\r")) != "\n\r"` because `\r\n` is one grapheme cluster while `\n\r` is two).
+- A method called `difference` might mean symmetric difference (A triangle B), not set difference (A \ B) — check the docs.
+- A function documented as "returns the largest key <= k" means <=, not <.
 
-When a property fails, investigate whether it's a real bug or a genuine edge case
-in the domain. A weaker property often still holds.
+When a property fails, investigate whether it's a real bug or a genuine edge case in the domain. A weaker property often still holds.
 
 ## Generator Discipline
 
-A common mistake agents make when writing property-based tests is **over-constraining generators**.
-This leads to tests that are weaker than they need to be.
+The most common mistake when writing property-based tests is **over-constraining generators**. Broad generators find more bugs because they explore inputs the developer didn't anticipate. Constrained generators give a false sense of safety.
 
 ### Start With No Bounds
 
-If the function accepts any `i32`, use:
+If the function accepts any integer, generate any integer:
 
-```rust
-generators::integers::<i32>()  // no min_value, no max_value
+```pseudocode
+n = tc.draw(integers())  # full range of the type, no min/max
 ```
 
-Do NOT preemptively write:
-
-```rust
-generators::integers::<i32>().min_value(0).max_value(100)  // WRONG unless justified
-```
+Preemptively adding bounds like `.min(0).max(100)` means you'll never discover that the function overflows on large values, mishandles negatives, or breaks at the type's boundaries. Those are exactly the bugs PBT is designed to find.
 
 ### Edge Cases Are the Point
 
-Don't narrow ranges to "avoid edge cases." Edge cases are exactly what PBT is for. If a function claims to work on all `i32` values, test it on all `i32` values — including `i32::MIN`, `i32::MAX`, `0`, `-1`, and `1`.
+Don't narrow ranges to "avoid edge cases." If a function claims to work on all integers, test it on all integers — including `MIN`, `MAX`, `0`, `-1`, and `1`. If it breaks, that's valuable information.
 
-### Don't Add `.min_size(1)` by Default
+### Don't Require Non-Empty by Default
 
-Unless the function's contract explicitly requires non-empty input, test with empty collections too. If a function panics on an empty vec, that might be a bug worth knowing about.
+Unless the function's contract explicitly requires non-empty input, test with empty collections too. If a function panics on an empty collection, that might be a bug worth knowing about.
 
 ### When a Test Fails on Extreme Values
 
-Your first reaction should be: **is this a real bug?**
+Assume it's a real bug unless you have strong evidence otherwise. If in doubt, ask the user.
 
-You should assume that it is unless you have strong evidence that it is not. If in doubt, ask the user.
-
-- If the function's documentation says it handles all integers but it overflows on `i32::MAX`, that's a bug in the code, not in your test.
+- If the function's documentation says it handles all integers but it overflows on `MAX`, that's a bug in the code, not in your test.
 - Only add bounds after investigating and confirming the input is outside the function's documented domain.
 
 ### When to Add Constraints
 
 Add generator bounds **only** when:
 
-1. **The function's contract explicitly excludes some inputs.** For example, `fn sqrt(x: f64)` documents that `x >= 0` is required.
+1. **The function's contract explicitly excludes some inputs.** For example, a square root function documents that input must be >= 0.
 2. **You need to avoid undefined behavior.** For example, division by zero.
 3. **A test failure has been investigated** and confirmed to be outside the function's domain.
 
-### Avoid rejection sampling where possible
+### Avoid Rejection Sampling Where Possible
 
-When a constraint involves relationships between multiple generated values, you may use `tc.assume()`:
+When a constraint involves relationships between multiple generated values, you might use `tc.assume()`:
 
-```rust
-let a = tc.draw(generators::integers::<i32>());
-let b = tc.draw(generators::integers::<i32>());
-tc.assume(a != b);  // constraint relates two values
+```pseudocode
+a = tc.draw(integers())
+b = tc.draw(integers())
+tc.assume(a != b)  # this is fine for simple constraints
 ```
 
-This example is perfectly fine, but it is better to avoid `assume` altogether when you can:
+But it's better to construct valid inputs directly when you can:
 
-e.g.
-
-```rust
-let a = tc.draw(generators::integers::<i32>());
-let b = tc.draw(generators::integers::<i32>().min_value(a));
+```pseudocode
+# Instead of tc.assume(a <= b), generate in order:
+a = tc.draw(integers())
+b = tc.draw(integers())
+if a > b:
+    a, b = b, a
 ```
 
-is better than
-
-```rust
-let a = tc.draw(generators::integers::<i32>());
-let b = tc.draw(generators::integers::<i32>());
-tc.assume(a <= b)
-```
-
-Even better is:
-
-```rust
-let mut a = tc.draw(generators::integers::<i32>());
-let mut b = tc.draw(generators::integers::<i32>());
-if (a > b) {
-    (a, b) = (b, a);
-}
-```
-
-It is particularly important to avoid rejection sampling in cases where the rejection rate is likely to be high.
-
-For example `st.integers().map(|n| n * 2)` is much better than `st.integers().filter(|n| n % 2 == 0)`, as the former constructs an even number directly, while the latter throws away around 50% of test cases.
+This is particularly important when the rejection rate would be high. For example, `integers().map(n -> n * 2)` is much better than `integers().filter(n -> n % 2 == 0)` — the latter throws away ~50% of test cases.
 
 ### Getting Large Collections
 
-Hegel's default collection size is small. If you need large collections (e.g.,
-to exercise deep tree paths), draw the size separately and pass it as `min_size`:
+Hegel's default collection size is small. If you need large collections (e.g., to exercise deep tree paths or multi-level node structures), draw the size separately:
 
-```rust
-// GOOD — can generate large collections, shrinks well
-let n = tc.draw(generators::integers::<usize>().max_value(300));
-let keys: Vec<i32> = tc.draw(generators::vecs(generators::integers())
-    .min_size(n));  // no max_size — let hegel go bigger if it wants
+```pseudocode
+# can generate large collections, and hegel can shrink n to find the minimal size
+n = tc.draw(integers(min=0, max=300))
+keys = tc.draw(lists(integers(), min_size=n))  # no max_size — let hegel go bigger
 
-// BAD — hegel's default size distribution rarely produces 100+ elements
-let keys: Vec<i32> = tc.draw(generators::vecs(generators::integers()));
+# BAD — hegel's default size distribution rarely produces 100+ elements
+keys = tc.draw(lists(integers()))
 ```
 
-Setting `min_size` but *not* `max_size` is a shrinking optimization: hegel can
-shrink `n` to find the minimal collection size that triggers the bug, while
-still being able to add extra elements if needed.
+### Use Unique Element Generation for Key Generation
 
-### Use `.unique()` for Key Generation
-
-When testing maps/sets that need unique keys:
-
-```rust
-let keys: Vec<i32> = tc.draw(generators::vecs(generators::integers::<i32>())
-    .max_size(30).unique());
-```
-
-This avoids confusion about which value wins for duplicate keys.
+When testing maps/sets that need unique keys, use the unique option on collection generators. This avoids confusion about which value wins for duplicate keys. See the language-specific reference for syntax.
 
 ## Handling Randomness in Code Under Test
 
-When the code under test requires an RNG (e.g., `fn sample(&self, rng: &mut impl Rng)`),
-**do not** create a seeded RNG like `ChaCha8Rng::seed_from_u64(seed)` with a
-hegel-generated seed. This defeats shrinking — hegel can only shrink the seed
-integer, not the actual random decisions the RNG makes.
+When the code under test requires an RNG, **do not** create a seeded RNG with a hegel-generated seed. Hegel can only shrink the seed integer, not the actual random decisions the RNG makes — so when a test fails, you get a meaningless minimal seed rather than a meaningful minimal sequence of random choices.
 
-Instead, use hegel's `rand` feature to get a hegel-controlled RNG. See the
-language-specific reference for API details.
-
-### Rand version mismatch
-
-Hegel's `rand` feature uses rand 0.9. If the project uses an older version of
-rand (e.g., 0.8), the RNG traits will be incompatible. In this case, ask the
-user whether they'd like to upgrade the project's rand dependency to 0.9. This
-is usually straightforward (the main API changes are `gen_range` -> `random_range`,
-`gen::<T>()` -> `random::<T>()`, `thread_rng()` -> `rng()`,
-`from_entropy` -> `from_os_rng`). Do not silently fall back to seeded ChaCha —
-that defeats the purpose.
+Instead, use hegel's random generator, which gives you an RNG that routes random decisions through hegel's shrinking engine. See the language-specific reference for the exact API.
 
 ### Two modes: artificial vs true randomness
 
-`generators::randoms()` has two modes:
+- **Default (artificial randomness):** Every random decision goes through hegel, enabling fine-grained shrinking of individual random values. Best for most code.
+- **True randomness mode:** Generates a single seed via hegel, then creates a real RNG from it. Hegel can only shrink the seed, not individual random decisions. Use this when the code under test does **rejection sampling** or otherwise depends on the RNG producing statistically random-looking output — artificial randomness can cause rejection loops to hang.
 
-- **Default (artificial randomness):** Every random decision goes through hegel,
-  enabling fine-grained shrinking of individual random values. This is the best
-  option for most code.
-
-- **`generators::randoms().use_true_random(true)`:** Generates a single seed via
-  hegel, then creates a real `StdRng` from it. Hegel can only shrink the seed,
-  not individual random decisions. Use this when the code under test does
-  **rejection sampling** or otherwise depends on the RNG producing
-  statistically random-looking output. Artificial randomness can cause rejection
-  loops to hang because the controlled byte sequences don't look random enough.
-
-**How to choose:** Start with the default. If tests hang or time out because the
-code does rejection sampling internally, switch to `.use_true_random(true)`.
+**How to choose:** Start with the default. If tests hang or time out because the code does rejection sampling internally, switch to true randomness mode.
 
 ### Refactoring concrete RNG types
 
-If the code under test takes a concrete RNG type (e.g., `rng: &mut ChaCha8Rng`)
-rather than a trait bound, consider whether it should be refactored to accept
-`impl Rng` or `&mut dyn RngCore` instead. This is both better API design and
-makes the code testable with hegel's random generator. Suggest this refactoring
-to the user.
+If the code under test takes a concrete RNG type rather than a trait/interface, consider whether it should be refactored to accept a generic RNG. This is both better API design and makes the code testable with hegel's random generator. Suggest this refactoring to the user.
 
 ## Common Mistakes
 
-1. **Over-constraining generators** — Adding bounds "just in case." This hides bugs and makes tests less valuable. See Generator Discipline above.
-2. **Testing trivial properties** — `assert!(x == x)` or `assert!(vec.len() >= 0)` test nothing. Every property should be falsifiable by a buggy implementation.
-3. **Using the implementation as the oracle** — If your test calls the same function to compute the expected result, it can never fail. Use an independent reference implementation (do not just copy the code to write this!), a simpler algorithm, or a structural property.
-4. **Generating too broadly then filtering almost everything** — If `.filter()` or `tc.assume()` rejects most inputs, Hegel will give up. Restructure your generators instead (e.g., use `.map()` or dependent generation).
-5. **Creating a separate test file for hegel tests** — Property-based tests belong alongside the existing tests for the same code. Don't put them in `test_hegel.rs` or `test_properties.rs` — add them to the existing test files.
-6. **Using manually seeded RNGs** — Don't generate a seed with hegel then create `ChaCha8Rng::seed_from_u64(seed)`. Use `generators::randoms()` with the `rand` feature so hegel controls the random decisions and can shrink them. See "Handling Randomness" above.
-7. **Overflowing in test code** — When computing values from generated data (e.g., `map.insert(k, k * 10)`), your test code itself can overflow before the library has a chance to be buggy. Use wrapping arithmetic (`k.wrapping_mul(10)`) or smaller intermediate types (draw `i16`, cast to `i32` for multiplication) to prevent this. Distinguish "this constraint protects the library's contract" (keep it) from "this constraint prevents my test from overflowing" (use wrapping arithmetic instead).
-8. **Adding `.max_size()` for performance** — If a test is slow with large collections, lower `test_cases` rather than restricting the input space. A slow test that finds bugs beats a fast test that can't. Many tree/trie bugs only manifest at 50-200+ elements.
+1. **Over-constraining generators** — Adding bounds "just in case" means the test will never find bugs at boundary values or with unexpected inputs. The whole value of PBT is exploring the input space the developer didn't think to test by hand. See Generator Discipline above.
 
-## Quick Setup
+2. **Testing trivial properties** — `assert x == x` or `assert len(vec) >= 0` test nothing useful. Every property should be falsifiable by a buggy implementation.
 
-### Rust
+3. **Using the implementation as the oracle** — If your test calls the same function to compute the expected result, it can never fail. Use an independent reference implementation, a simpler algorithm, or a structural property.
 
-```toml
-# Cargo.toml
-[dev-dependencies]
-hegel = { git = "https://github.com/hegeldev/hegel-rust" }
-```
+4. **High rejection rates** — If `.filter()` or `tc.assume()` rejects most inputs, hegel will give up. Restructure generators to produce valid inputs directly (use `.map()` or dependent draws).
 
-If the code under test uses `rand`:
+5. **Creating a separate test file for hegel tests** — Property-based tests belong alongside the existing tests for the same code. Add them to existing test files.
 
-```toml
-[dev-dependencies]
-hegel = { git = "https://github.com/hegeldev/hegel-rust", features = ["rand"] }
-```
+6. **Using manually seeded RNGs** — Use hegel's random generator so hegel controls the random decisions and can shrink them individually. See "Handling Randomness" above.
 
-Requires [`uv`](https://github.com/astral-sh/uv) on PATH. Run with `cargo test`.
+7. **Overflowing in test code** — When computing values from generated data (e.g., `map.insert(k, k * 10)`), your test code itself can overflow before the library has a chance to be buggy. Use wrapping arithmetic or draw a smaller type and widen it to prevent overflow in the test. Distinguish "this constraint protects the library's contract" (keep it) from "this constraint prevents my test from overflowing" (use wrapping arithmetic instead).
+
+8. **Restricting collection size for performance** — If a test is slow with large collections, lower the test case count rather than restricting the input space. A slow test that finds bugs beats a fast test that can't. Many tree/trie bugs only manifest at 50-200+ elements.
+

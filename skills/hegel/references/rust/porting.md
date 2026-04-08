@@ -4,8 +4,7 @@
 
 Proptest is the most common Rust PBT library. The main differences:
 
-- Proptest is declarative (strategies in function signatures or the `proptest!` macro);
-  hegel is imperative (`tc.draw()` calls).
+- Proptest is declarative (strategies in function signatures or the `proptest!` macro); hegel is imperative (`tc.draw()` calls).
 - Proptest does shrinking in-process; hegel delegates to a server.
 - Proptest uses `prop_assert!`; hegel uses standard `assert!`.
 
@@ -39,8 +38,7 @@ fn test_addition(tc: hegel::TestCase) {
 }
 ```
 
-But consider: should those bounds be there at all? If the property is about
-addition, test the full range unless there's a reason not to.
+But consider: should those bounds be there at all? If the property is about addition, test the full range unless there's a reason not to.
 
 ### Strategy → Generator Mapping
 
@@ -143,8 +141,7 @@ fn test_valid_index(tc: hegel::TestCase) {
 }
 ```
 
-This is one of hegel's main ergonomic advantages — dependent generation is just
-sequential code, no combinator gymnastics needed.
+This is one of hegel's main ergonomic advantages — dependent generation is just sequential code, no combinator gymnastics needed.
 
 ## From Quickcheck
 
@@ -172,8 +169,7 @@ fn test_reverse_involution(tc: hegel::TestCase) {
 ```
 
 Key differences:
-- Quickcheck infers generators from the function signature via `Arbitrary`;
-  hegel uses explicit `tc.draw()` calls.
+- Quickcheck infers generators from the function signature via `Arbitrary`; hegel uses explicit `tc.draw()` calls.
 - Quickcheck tests return `bool` (or `TestResult`); hegel tests use `assert!`.
 - Quickcheck has an 8-parameter limit on the macro; hegel has no limit.
 
@@ -214,19 +210,11 @@ fn test_division(tc: hegel::TestCase) {
 
 When porting tests from proptest or quickcheck:
 
-1. **Remove the old dependency** from `Cargo.toml` (if no other tests use it)
-   and add hegel.
+1. **Remove the old dependency** from `Cargo.toml` (if no other tests use it) and add hegel.
 2. **Replace the test macro/attribute** with `#[hegel::test]`.
-3. **Convert strategies/Arbitrary to `tc.draw()` calls.** Start with the
-   broadest generators — don't carry over narrow bounds from the old framework
-   unless they're justified by the function's contract.
-4. **Replace framework-specific assertions** (`prop_assert!`, bool returns)
-   with standard `assert!`.
+3. **Convert strategies/Arbitrary to `tc.draw()` calls.** Start with the broadest generators — don't carry over narrow bounds from the old framework unless they're justified by the function's contract.
+4. **Replace framework-specific assertions** (`prop_assert!`, bool returns) with standard `assert!`.
 5. **Replace `prop_assume!` / `TestResult::discard()`** with `tc.assume()`.
-6. **Simplify dependent generation.** If the old test used `flat_map` chains
-   just to make later values depend on earlier ones, rewrite as sequential
-   `tc.draw()` calls.
-7. **Remove custom `Shrink` implementations.** Hegel handles shrinking
-   automatically.
-8. **Run the tests.** If they fail on inputs the old framework didn't find,
-   investigate — that's the point.
+6. **Simplify dependent generation.** If the old test used `flat_map` chains just to make later values depend on earlier ones, rewrite as sequential `tc.draw()` calls.
+7. **Remove custom `Shrink` implementations.** Hegel handles shrinking automatically.
+8. **Run the tests.** If they fail on inputs the old framework didn't find, investigate — that's the point.
