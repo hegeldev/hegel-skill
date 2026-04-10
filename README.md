@@ -1,6 +1,6 @@
 # hegel-skill
 
-An [Agent Skill](https://agentskills.io/home) that teaches agents how to write property-based tests using [Hegel](https://github.com/hegeldev/hegel-core).
+An [Agent Skill](https://agentskills.io/home) that teaches agents how to write property-based tests using [Hegel](https://hegel.dev/).
 
 When you ask an agent to write property-based tests, this skill provides:
 
