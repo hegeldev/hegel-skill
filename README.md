@@ -12,7 +12,7 @@ When you ask an agent to write property-based tests, this skill provides:
 Support hegel libraries:
 * [hegel-rust](https://github.com/hegeldev/hegel-rust)
 * [hegel-go](https://github.com/hegeldev/hegel-go)
-* [hegel-cpp](https://github.com/hegeldev/hegel-cpp).
+* [hegel-cpp](https://github.com/hegeldev/hegel-cpp)
 
 ## Installation
 
