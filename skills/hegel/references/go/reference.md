@@ -239,7 +239,7 @@ Both take min/max as constructor arguments. Pass `maxSize < 0` for unbounded.
 // Always returns the same value
 x := hegel.Draw(ht, hegel.Just(42))
 
-// Sample uniformly from a fixed set
+// Sample from a fixed set
 suit := hegel.Draw(ht, hegel.SampledFrom([]string{"hearts", "diamonds", "clubs", "spades"}))
 ```
 
