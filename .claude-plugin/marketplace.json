@@ -5,7 +5,7 @@
   },
   "metadata": {
       "description": "Skill for teaching Claude to write tests using Hegel",
-    "version": "0.0.1"
+    "version": "0.2.0"
   },
   "plugins": [
     {
@@ -15,7 +15,7 @@
         "repo": "hegeldev/hegel-skill"
       },
       "description": "Skill for teaching Claude to write tests using Hegel",
-      "version": "0.0.1"
+      "version": "0.2.0"
     }
   ]
 }

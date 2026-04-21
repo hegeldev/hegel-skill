@@ -221,7 +221,7 @@ let x: i32 = tc.draw(generators::just(42));
 // Always returns ()
 let u: () = tc.draw(generators::unit());
 
-// Sample uniformly from a fixed set
+// Sample from a fixed set
 let suit: &str = tc.draw(generators::sampled_from(
     vec!["hearts", "diamonds", "clubs", "spades"]));
 ```
