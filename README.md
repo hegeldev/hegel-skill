@@ -9,7 +9,7 @@ When you ask an agent to write property-based tests, this skill provides:
 - Language-specific API references and idiomatic patterns
 - Guidance on evolving existing unit tests into property-based tests
 
-Support hegel libraries:
+Supported hegel libraries:
 * [hegel-rust](https://github.com/hegeldev/hegel-rust)
 * [hegel-go](https://github.com/hegeldev/hegel-go)
 * [hegel-cpp](https://github.com/hegeldev/hegel-cpp)
