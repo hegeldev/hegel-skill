@@ -3,7 +3,7 @@
 ## Table of Contents
 
 - [Setup](#setup)
-- [Test Structure](#test-structure) — `hegel.Test`, `hegel.Run`, `hegel.MustRun`, HealthCheck, database
+- [Test Structure](#test-structure) — `hegel.Test`, HealthCheck, database
 - [T vs TestCase](#t-vs-testcase)
 - [Draw and TestCase Methods](#draw-and-testcase-methods) — `hegel.Draw`, `Assume`, `Note`, `Target`
 - [Generator Reference](#generator-reference) — Numeric, boolean, text, characters, binary, collections, OneOf, optional, format, regex
@@ -66,40 +66,6 @@ Options:
 - `hegel.WithDatabase(db hegel.DatabaseSetting)` — Configure example-database persistence (see below)
 - `hegel.WithDerandomize(b bool)` — Use a fixed seed for reproducible runs (default: `true` in CI)
 
-### `hegel.Run` (non-testing.T contexts)
-
-`Run` executes a property test and returns an error. `Note` output goes to stdout. For use in standalone binaries.
-
-```go
-err := hegel.Run(func(tc *hegel.TestCase) {
-    n := hegel.Draw(tc, hegel.Integers(math.MinInt32, math.MaxInt32))
-    if n != n {
-        panic("integer not equal to itself")
-    }
-})
-```
-
-`Run` accepts the same `Option` values as `Test`:
-
-```go
-err := hegel.Run(func(tc *hegel.TestCase) {
-    // ...
-}, hegel.WithTestCases(500))
-```
-
-### `hegel.MustRun`
-
-Like `Run`, but panics on failure:
-
-```go
-hegel.MustRun(func(tc *hegel.TestCase) {
-    n := hegel.Draw(tc, hegel.Integers(math.MinInt32, math.MaxInt32))
-    if n != n {
-        panic("integer not equal to itself")
-    }
-})
-```
-
 ### HealthCheck
 
 `HealthCheck` variants (the wire-protocol name in parentheses is what you'll see in failure messages):
@@ -141,7 +107,7 @@ hegel.Test(t, func(ht *hegel.T) { /* ... */ },
 Hegel provides two test context types:
 
 - **`*hegel.T`** — Used with `hegel.Test`. Embeds both `*hegel.TestCase` and `*testing.T`, so you can use standard Go test methods (`ht.Fatal`, `ht.Error`, `ht.Log`, `ht.Skip`) and they work correctly with hegel's shrinking.
-- **`*hegel.TestCase`** — Used with `hegel.Run`, `hegel.MustRun`, and inside `hegel.Composite`. Only has hegel-specific methods (`Assume`, `Note`, `Target`). Signal failures via `panic`.
+- **`*hegel.TestCase`** — Used inside `hegel.Composite`. Only has hegel-specific methods (`Assume`, `Note`, `Target`). Signal failures via `panic`.
 
 `*hegel.T` shadows these `testing.T` methods for hegel compatibility:
 
@@ -564,7 +530,7 @@ Distinguish "this constraint protects the library's contract" (keep it) from "th
 
 11. **Excessive assume/filter rejections fail the test.** If `Assume()` or `Filter` rejects too many inputs, hegel gives up. Restructure your generators to produce valid inputs directly.
 
-12. **`Note` only prints on the final replay.** Don't rely on `Note` for progress logging — it only appears when displaying the minimal counterexample. With `hegel.Test`, notes route through `t.Log`; with `hegel.Run`/`MustRun`, they go to stdout.
+12. **`Note` only prints on the final replay.** Don't rely on `Note` for progress logging — it only appears when displaying the minimal counterexample. Notes route through `t.Log`.
 
 13. **Default collection sizes are small.** `hegel.Lists(gen)` with no bounds rarely produces 100+ elements. If you need large collections (e.g., to test tree traversal at depth), draw the size separately:
     ```go
