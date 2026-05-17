@@ -5,12 +5,14 @@
 - [Setup](#setup)
 - [Test Structure](#test-structure) — `#[hegel::test]`, builder form, Settings, HealthCheck
 - [TestCase Methods](#testcase-methods) — `draw`, `draw_silent`, `assume`, `note`
-- [Generator Reference](#generator-reference) — Numeric, boolean, text, binary, collections, tuples, optional, format, regex, random
+- [Generator Reference](#generator-reference) — Numeric, boolean, text, binary, collections, tuples, optional, format, regex
 - [Combinator Methods](#combinator-methods) — `.map()`, `.filter()`, `.flat_map()`, `.boxed()`
 - [Macros](#macros) — `one_of!`, `#[hegel::composite]`, `compose!`, `#[derive(DefaultGenerator)]`, `derive_generator!`
 - [Rust-Specific Examples](#rust-specific-examples) — Derived generators, randomness, dependent generation
 - [Gotchas](#gotchas)
 - [Stateful Testing](#stateful-testing) — `#[hegel::state_machine]`, rules, invariants, Variables
+
+For generators that integrate with third-party crates (`chrono`, `jiff`, `serde_json`, `rand`), see `references/rust/extras.md`. Load that file only when the code under test uses one of those crates.
 
 ## Setup
 
@@ -124,6 +126,9 @@ In CI environments (detected automatically), the database is disabled and tests 
 | `draw_silent()` | `fn draw_silent<T>(&self, gen: impl Generator<T>) -> T` | Draw without recording (no `Debug` bound) |
 | `assume()` | `fn assume(&self, condition: bool)` | Reject this test case if condition is false |
 | `note()` | `fn note(&self, message: &str)` | Print debug info (only on final counterexample replay) |
+| `target()` | `fn target(&self, score: f64)` | Feed an observation back to the engine to guide generation toward higher-scoring inputs |
+| `target_labelled()` | `fn target_labelled(&self, score: f64, label: impl Into<String>)` | Like `target()`, but with an explicit label so multiple targets are optimised independently |
+| `reject()` | `fn reject(&self) -> !` | Like `assume(false)`, but returns `!` so the compiler knows code after the call is unreachable |
 
 ### Usage
 
@@ -139,6 +144,22 @@ fn test_division(tc: hegel::TestCase) {
     assert_eq!(a, q * b + r);
 }
 ```
+
+### Targeted Testing
+
+`tc.target(score)` feeds an observation back to hegel's engine. The engine uses the score to bias generation toward higher-scoring inputs, which is useful for stress-testing properties that fail at extremes:
+
+```rust
+#[hegel::test]
+fn my_test(tc: hegel::TestCase) {
+    let n: u64 = tc.draw(generators::integers::<u64>().max_value(1000));
+    let m: u64 = tc.draw(generators::integers::<u64>().max_value(1000));
+    tc.target((n + m) as f64);
+    assert!(n + m < 2000);
+}
+```
+
+Inside `#[hegel::test]`, `#[hegel::main]`, or `#[hegel::standalone_function]`, `tc.target(expr)` is rewritten to `tc.target_labelled(expr, "expr")` so separate targeting expressions get separate labels by default. Call `tc.target_labelled(score, "...")` directly to control the label yourself.
 
 ## Generator Reference
 
@@ -319,26 +340,6 @@ let code: String = tc.draw(
 ```
 
 - `.fullmatch(bool)` — Require the pattern matches the entire string
-
-### Random Generator (requires `rand` feature)
-
-```rust
-// Cargo.toml: hegel = { ..., features = ["rand"] }
-
-// Default: artificial randomness — every random decision is shrinkable
-let mut rng = tc.draw(generators::randoms());
-
-// True randomness — single shrinkable seed, real StdRng output
-let mut rng = tc.draw(generators::randoms().use_true_random(true));
-```
-
-The returned `HegelRandom` implements `rand::RngCore` (rand 0.9).
-
-**Default mode** routes every `next_u32`/`next_u64`/`fill_bytes` call through hegel, so the shrinker can minimize individual random decisions. Best for most code.
-
-**`use_true_random()` mode** generates a single seed via hegel then creates a real `StdRng`. Use this when the code under test does rejection sampling or other algorithms that need statistically random-looking output — artificial randomness can cause these to loop indefinitely.
-
-**Rand version compatibility:** hegel uses rand 0.9. If the project uses rand 0.8, the traits are incompatible. Ask the user to upgrade rand (main changes: `gen_range` -> `random_range`, `gen::<T>()` -> `random::<T>()`, `thread_rng()` -> `rng()`, `from_entropy` -> `from_os_rng`). Do not fall back to `ChaCha8Rng::seed_from_u64(hegel_seed)` — that defeats shrinking.
 
 ## Combinator Methods
 
@@ -551,8 +552,11 @@ fn test_config_merge(tc: hegel::TestCase) {
 
 ### Testing code that uses randomness
 
+This uses the `rand` extra — see `references/rust/extras.md` for the feature flag and the full `randoms()` API (including the artificial-vs-true-random modes).
+
 ```rust
 use hegel::generators::{self, Generator};
+use hegel::extras::rand as rand_gs;
 
 // Code under test: fn sample(weights: &[f64], rng: &mut impl Rng) -> usize
 
@@ -561,7 +565,7 @@ fn test_sample_returns_valid_index(tc: hegel::TestCase) {
     let weights: Vec<f64> = tc.draw(generators::vecs(
         generators::floats::<f64>().min_value(0.0).exclude_min(true)
     ).min_size(1));
-    let mut rng = tc.draw(generators::randoms());
+    let mut rng = tc.draw(rand_gs::randoms());
     let idx = sample(&weights, &mut rng);
     assert!(idx < weights.len());
 }
@@ -576,7 +580,7 @@ fn test_rejection_sampler(tc: hegel::TestCase) {
         generators::floats::<f64>().min_value(0.0).exclude_min(true)
     ).min_size(1));
     // use_true_random(true) avoids hangs from rejection sampling loops
-    let mut rng = tc.draw(generators::randoms().use_true_random(true));
+    let mut rng = tc.draw(rand_gs::randoms().use_true_random(true));
     let idx = rejection_sample(&weights, &mut rng);
     assert!(idx < weights.len());
 }
@@ -614,19 +618,17 @@ let k_squared = k * k;  // can't overflow i32
 
 7. **`note()` only prints on the final replay.** Don't rely on `tc.note()` for progress logging — it only appears when displaying the minimal counterexample.
 
-8. **`target()` is not yet available** in Hegel-rust. It is planned for a future release.
-
-9. **Default collection sizes are small.** `generators::vecs(gen)` with no bounds rarely produces 100+ elements. If you need large collections (e.g., to test tree traversal at depth), draw the size separately:
+8. **Default collection sizes are small.** `generators::vecs(gen)` with no bounds rarely produces 100+ elements. If you need large collections (e.g., to test tree traversal at depth), draw the size separately:
    ```rust
    let n = tc.draw(generators::integers::<usize>().max_value(300));
    let keys: Vec<i32> = tc.draw(generators::vecs(generators::integers()).min_size(n));
    ```
 
-10. **Use `.unique()` for map/set key generation.** When testing ordered maps or sets, generate unique keys to avoid ambiguity about which value wins:
-    ```rust
-    let keys: Vec<i32> = tc.draw(generators::vecs(generators::integers::<i32>())
-        .max_size(50).unique());
-    ```
+9. **Use `.unique()` for map/set key generation.** When testing ordered maps or sets, generate unique keys to avoid ambiguity about which value wins:
+   ```rust
+   let keys: Vec<i32> = tc.draw(generators::vecs(generators::integers::<i32>())
+       .max_size(50).unique());
+   ```
 
 ## Stateful Testing
 
