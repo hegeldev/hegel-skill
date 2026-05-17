@@ -9,6 +9,8 @@
 - [Generator Reference](#generator-reference) — Numeric, boolean, text, characters, binary, collections, OneOf, optional, format, regex
 - [Combinator Functions](#combinator-functions) — `Map`, `Filter`, `FlatMap`
 - [Composite Generators](#composite-generators) — `hegel.Composite`
+- [Stateful Testing](#stateful-testing) — `hegel.RunStateful`, rules, invariants
+- [Workloads](#workloads) — `hegel.Workload` for standalone CLI binaries
 - [Project Configuration](#project-configuration)
 - [Go-Specific Examples](#go-specific-examples) — Dependent generation, wrapping arithmetic
 - [Gotchas](#gotchas)
@@ -65,6 +67,7 @@ Options:
 - `hegel.SuppressHealthCheck(checks ...hegel.HealthCheck)` — Suppress specific health checks
 - `hegel.WithDatabase(db hegel.DatabaseSetting)` — Configure example-database persistence (see below)
 - `hegel.WithDerandomize(b bool)` — Use a fixed seed for reproducible runs (default: `true` in CI)
+- `hegel.WithSeed(seed int64)` — Pin a specific seed for reproducible runs
 
 ### HealthCheck
 
@@ -106,8 +109,8 @@ hegel.Test(t, func(ht *hegel.T) { /* ... */ },
 
 Hegel provides two test context types:
 
-- **`*hegel.T`** — Used with `hegel.Test`. Embeds both `*hegel.TestCase` and `*testing.T`, so you can use standard Go test methods (`ht.Fatal`, `ht.Error`, `ht.Log`, `ht.Skip`) and they work correctly with hegel's shrinking.
-- **`*hegel.TestCase`** — Used inside `hegel.Composite`. Only has hegel-specific methods (`Assume`, `Note`, `Target`). Signal failures via `panic`.
+- **`*hegel.T`** — Used with `hegel.Test`. Embeds the `hegel.TestCase` interface and wraps `*testing.T`, so you can use standard Go test methods (`ht.Fatal`, `ht.Error`, `ht.Log`, `ht.Skip`) and they work correctly with hegel's shrinking.
+- **`hegel.TestCase`** — An interface used inside `hegel.Composite` and stateful-testing rules. Exposes hegel-specific methods (`Assume`, `Note`, `Target`). Signal failures via `panic`.
 
 `*hegel.T` shadows these `testing.T` methods for hegel compatibility:
 
@@ -120,15 +123,17 @@ Hegel provides two test context types:
 | `Log`, `Logf` | Routes through `Note` (only shown on final replay) |
 | `Run` | Panics — nested sub-tests are not supported inside hegel tests |
 
+`hegel.TestCase` also satisfies the `TestingT` interfaces used by popular assertion libraries (testify, gotest.tools, gomega), so assertions from those libraries work directly inside `Composite` callbacks, `hegel.Test` bodies, and stateful-testing rules.
+
 ## Draw and TestCase Methods
 
 ### `hegel.Draw`
 
 ```go
-func Draw[T any](tc testCase, g Generator[T]) T
+func Draw[T any](tc TestCase, g Generator[T]) T
 ```
 
-`Draw` is a **top-level generic function**, not a method. It produces a value from a Generator using the given test context (`*hegel.T` or `*hegel.TestCase`):
+`Draw` is a **top-level generic function**, not a method. It produces a value from a Generator using the given test context (`*hegel.T` or `hegel.TestCase`):
 
 ```go
 n := hegel.Draw(ht, hegel.Integers(0, 100))
@@ -137,11 +142,13 @@ s := hegel.Draw(ht, hegel.Text().MinSize(0).MaxSize(50))
 
 ### TestCase Methods
 
+`hegel.TestCase` is an interface; `*hegel.T` and the value passed to `hegel.Composite` callbacks both satisfy it.
+
 | Method | Signature | Purpose |
 |--------|-----------|---------|
-| `Assume` | `func (s *TestCase) Assume(condition bool)` | Reject this test case if condition is false |
-| `Note` | `func (s *TestCase) Note(message string)` | Print debug info (only on final counterexample replay) |
-| `Target` | `func (s *TestCase) Target(value float64, label string)` | Guide test generation toward maximizing a metric |
+| `Assume` | `Assume(condition bool)` | Reject this test case if condition is false |
+| `Note` | `Note(message string)` | Print debug info (only on final counterexample replay) |
+| `Target` | `Target(value float64, label string)` | Guide test generation toward maximizing a metric |
 
 ### Usage
 
@@ -398,7 +405,7 @@ In most cases, prefer sequential `hegel.Draw` calls over `FlatMap` — they read
 
 ## Composite Generators
 
-`hegel.Composite` packages an imperative draw sequence into a reusable `Generator[T]`. The function receives a `*hegel.TestCase` (the same context test bodies use) and may call `hegel.Draw` any number of times — including conditionally, in loops, or recursively.
+`hegel.Composite` packages an imperative draw sequence into a reusable `Generator[T]`. The function receives a `hegel.TestCase` (the same interface test bodies satisfy) and may call `hegel.Draw` any number of times — including conditionally, in loops, or recursively.
 
 ```go
 type Person struct {
@@ -407,7 +414,7 @@ type Person struct {
     DrivingLicense bool
 }
 
-personGen := hegel.Composite(func(tc *hegel.TestCase) Person {
+personGen := hegel.Composite(func(tc hegel.TestCase) Person {
     age := hegel.Draw(tc, hegel.Integers(0, 120))
     name := hegel.Draw(tc, hegel.Text())
     p := Person{Age: age, Name: name}
@@ -438,7 +445,7 @@ type Node struct {
 
 var nodeGen func(depth int) hegel.Generator[*Node]
 nodeGen = func(depth int) hegel.Generator[*Node] {
-    return hegel.Composite(func(tc *hegel.TestCase) *Node {
+    return hegel.Composite(func(tc hegel.TestCase) *Node {
         n := &Node{Value: hegel.Draw(tc, hegel.Integers(0, 100))}
         if depth > 0 && hegel.Draw(tc, hegel.Booleans()) {
             n.Left = hegel.Draw(tc, nodeGen(depth-1))
@@ -454,6 +461,62 @@ func TestTree(t *testing.T) {
     })
 }
 ```
+
+## Stateful Testing
+
+`hegel.RunStateful` enables model-based testing. Define a struct whose methods follow a naming convention: methods prefixed with `Rule` are actions hegel can apply, and methods prefixed with `Invariant` are checked after every successful rule. Both kinds of method take a single `hegel.TestCase` argument.
+
+```go
+type stateCounter struct{ n int }
+
+// RuleIncrement bumps the counter up by one.
+func (c *stateCounter) RuleIncrement(_ hegel.TestCase) { c.n++ }
+
+// RuleDecrement bumps the counter down by one.
+func (c *stateCounter) RuleDecrement(_ hegel.TestCase) { c.n-- }
+
+// InvariantSensible panics if the counter has drifted out of range.
+func (c *stateCounter) InvariantSensible(_ hegel.TestCase) {
+    if c.n < -10000 || c.n > 10000 {
+        panic("counter out of sensible range")
+    }
+}
+
+func TestCounter(t *testing.T) {
+    hegel.Test(t, func(ht *hegel.T) {
+        c := &stateCounter{}                // fresh machine per test case
+        hegel.RunStateful(ht, c)
+    })
+}
+```
+
+Notes:
+- Pass a **pointer** to your machine to `RunStateful` so rules can mutate it.
+- Inside a rule, call `tc.Assume(false)` to skip when the rule doesn't apply — hegel will try a different rule.
+- `RunStateful` panics if the machine has no `Rule*` methods or if any `Rule*`/`Invariant*` method has the wrong signature.
+
+**Shared external state.** If the machine wraps something you can't cheaply re-create per test case (a database, a temp directory, a long-lived network connection), keep that resource hoisted outside the test body and reset/clean it inside the body before calling `RunStateful`. Otherwise — for in-memory models, which is the common case — just allocate fresh.
+
+For models that need to track dynamically created resources (handles, IDs, accounts), generate them inside a rule and store them on the machine; pull from that store in other rules. Use `Draw(tc, hegel.SampledFrom(c.handles))` (with `tc.Assume(len(c.handles) > 0)` first) to act on existing resources.
+
+## Workloads
+
+`hegel.Workload` runs a property test as a standalone CLI binary — useful for soak tests, fuzzing harnesses, or long-running workloads outside of `go test`. It parses standard hegel flags (`-test-cases`, `-seed`, `-verbosity`, etc.) and exits non-zero on failure.
+
+```go
+package main
+
+import "hegel.dev/go/hegel"
+
+func main() {
+    hegel.Workload(func(tc hegel.TestCase) {
+        n := hegel.Draw(tc, hegel.Integers(0, 100))
+        _ = n
+    })
+}
+```
+
+`Workload` takes the same `Option` values as `hegel.Test` (e.g. `hegel.WithTestCases(...)`). CLI flags override `Option` values, which override defaults.
 
 ## Project Configuration
 

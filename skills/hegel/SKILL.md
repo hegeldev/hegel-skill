@@ -1,14 +1,14 @@
 ---
 name: hegel
 description: >
-  Write property-based tests using Hegel across Rust, Go, and C++ projects. Use
-  this skill whenever the user asks to write tests, add test coverage, or improve
-  testing for functions, modules, or libraries — especially when the code has
-  properties like round-trips, invariants, or contracts that hold across many
-  inputs. Also triggers on: "property-based tests", "PBT", "hegel", "fuzz",
-  "generative tests", "randomized testing", "test with random inputs",
-  "shrinking", or when existing tests use proptest, quickcheck, rapid, gopter,
-  or rapidcheck.
+  Write property-based tests using Hegel across Rust, Go, C++, and TypeScript
+  projects. Use this skill whenever the user asks to write tests, add test
+  coverage, or improve testing for functions, modules, or libraries — especially
+  when the code has properties like round-trips, invariants, or contracts that
+  hold across many inputs. Also triggers on: "property-based tests", "PBT",
+  "hegel", "fuzz", "generative tests", "randomized testing", "test with random
+  inputs", "shrinking", or when existing tests use proptest, quickcheck, rapid,
+  gopter, rapidcheck, or fast-check.
 ---
 
 # Hegel: Property-Based Testing

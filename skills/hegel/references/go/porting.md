@@ -233,7 +233,7 @@ hegel.Test(t, func(ht *hegel.T) {
 Hegel — packaged as a `Composite` generator (when you want to reuse it):
 
 ```go
-pointGen := hegel.Composite(func(tc *hegel.TestCase) Point {
+pointGen := hegel.Composite(func(tc hegel.TestCase) Point {
     return Point{
         X: hegel.Draw(tc, hegel.Floats[float64]().Min(-100).Max(100)),
         Y: hegel.Draw(tc, hegel.Floats[float64]().Min(-100).Max(100)),

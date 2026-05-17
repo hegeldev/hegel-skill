@@ -13,6 +13,7 @@ Supported hegel libraries:
 * [hegel-rust](https://github.com/hegeldev/hegel-rust)
 * [hegel-go](https://github.com/hegeldev/hegel-go)
 * [hegel-cpp](https://github.com/hegeldev/hegel-cpp)
+* [hegel-typescript](https://github.com/hegeldev/hegel-typescript)
 
 ## Installation
 
