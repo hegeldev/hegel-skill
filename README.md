@@ -25,7 +25,7 @@ Add this repository as a marketplace, and install the skill:
 
 ```bash
 /plugin marketplace add hegeldev/hegel-skill
-/plugin install hegel-skill@hegeldev-hegel-skill
+/plugin install hegel-skill@hegeldev
 ```
 
 Or see https://code.claude.com/docs/en/skills for local installation instructions.
