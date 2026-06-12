@@ -1,11 +1,11 @@
 {
-  "name": "hegel-skill-marketplace",
+  "name": "hegeldev",
   "owner": {
     "name": "Hegel development team"
   },
   "metadata": {
-      "description": "Skill for teaching Claude to write tests using Hegel",
-    "version": "0.2.0"
+    "description": "Skill for teaching Claude to write tests using Hegel",
+    "version": "0.4.0"
   },
   "plugins": [
     {
@@ -15,7 +15,7 @@
         "repo": "hegeldev/hegel-skill"
       },
       "description": "Skill for teaching Claude to write tests using Hegel",
-      "version": "0.2.0"
+      "version": "0.4.0"
     }
   ]
 }
