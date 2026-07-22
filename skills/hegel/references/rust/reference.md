@@ -26,7 +26,7 @@ If the target crate pins a `rust-version` older than hegeltest's MSRV, `cargo ad
 
 **Edition 2015 crates**: `use hegel::...` will not resolve on its own. Add `extern crate hegel;` at the top of the test file (integration tests) or `#[cfg(test)] extern crate hegel;` at the crate root (unit test modules). Everything else, including `#[hegel::test]`, works unchanged on edition 2015.
 
-**`no_std` crates**: `#[hegel::test]`'s generated code assumes the std prelude (it calls `.to_string()`), so unit-test modules in `#![no_std]` crates fail with E0599 pointing at the attribute. Fix: add `use std::string::ToString;` (or `use alloc::{format, string::ToString};` in `no_std + alloc` crates) to each test module. The tests themselves still run under std — this is only about name resolution inside the crate.
+**`no_std` crates**: `#[hegel::test]`'s generated code assumes the std prelude (it calls `.to_string()` and `format!`), so unit-test modules in `#![no_std]` crates fail with E0599/E0425 pointing at the attribute. Fix: add `use std::{format, string::ToString};` (or `use alloc::{format, string::{String, ToString}};` in `no_std + alloc` crates) to each test module — composites returning `String` need the `String` import too. The tests themselves still run under std — this is only about name resolution inside the crate. Related: on edition ≤2018 crates, `panic!`/`assert!` single-argument messages are not format strings — `assert!(cond, "{x:?}")` prints the literal braces; pass format arguments explicitly.
 
 If the code under test uses `rand` and you need hegel-controlled RNG instances, enable the `rand` feature:
 
@@ -56,7 +56,7 @@ fn test_addition_commutes(tc: hegel::TestCase) {
 With configuration:
 
 ```rust
-#[hegel::test(test_cases = 500, verbosity = Verbosity::Verbose, seed = Some(42))]
+#[hegel::test(test_cases = 500, verbosity = hegel::Verbosity::Verbose, seed = Some(42))]
 fn test_with_config(tc: hegel::TestCase) {
     // ...
 }
@@ -450,7 +450,7 @@ let n: i32 = tc.draw(hegel::one_of!(
 ));
 ```
 
-All branches must return the same type.
+All branches must yield the same *value* type; the generator types may differ (box the branches with `.boxed()` only if the compiler demands unification).
 
 ### `#[hegel::composite]`
 
@@ -733,7 +733,7 @@ let k_squared = k * k;  // can't overflow i32
 
 10. **Generators are single-use values.** `tc.draw(gen)` takes the generator by value, so drawing twice from the same variable is a move error. Rebuild the generator per draw (they're cheap), or use a `BoxedGenerator` (`.boxed()`), which implements `Clone`.
 
-11. **Passing tests print nothing extra.** A passing hegel test looks exactly like a passing unit test; there is no per-case output. To confirm cases are actually being generated, run once with `#[hegel::test(verbosity = Verbosity::Verbose)]`, or temporarily break the property and check that hegel reports a shrunk counterexample. (A deliberate liveness-check failure leaves an entry in the `.hegel/` failure database — harmless, but delete `.hegel/` afterwards to avoid replaying it.)
+11. **Passing tests print nothing extra.** A passing hegel test looks exactly like a passing unit test; there is no per-case output. To confirm cases are actually being generated, run once with `#[hegel::test(verbosity = hegel::Verbosity::Verbose)]` (the qualified path — bare `Verbosity` is E0433 without an import), or temporarily break the property and check that hegel reports a shrunk counterexample. (A deliberate liveness-check failure leaves an entry in the `.hegel/` failure database — harmless, but delete `.hegel/` afterwards to avoid replaying it.)
 
 12. **Adding tests to existing test files can collide with existing names.** Two recurring cases: E0255 when a test-function name matches an existing one (alias your imports or rename), and E0659 ambiguous `assert_eq!` when the surrounding file glob-imports `pretty_assertions` (add `use pretty_assertions::assert_eq;` inside your new module, or use fully-qualified `core::assert_eq!`).
 
@@ -799,6 +799,7 @@ Practical notes:
 - **Subjects that borrow.** If the type under test borrows other state (e.g. an incremental `Encoder<'a>` that mutably borrows its output buffer), it can't be stored in the machine alongside what it borrows. Store *owned inputs* (e.g. the fragments fed so far) in the machine instead, and reconstruct/finalize the borrowing object inside the rule or invariant that checks it.
 - **Compounding rules are slow.** Rules that multiply state size (e.g. `mul` on an arbitrary-precision number, appending to a document every step) make late steps expensive. Prefer moderate `test_cases` for such machines rather than shrinking the generated values.
 - **Shrinking a failing machine can take minutes** when rules do I/O (temp files, databases) or invariants are expensive — this is normal, not a hang. To iterate faster on a known failure, temporarily reduce `test_cases`. `verbosity = Verbosity::Verbose` shows `Step N: <rule>` lines and assumption-skips, which is the way to see what a machine is doing.
+- **Attributes compose.** `#[hegel::test]` works together with extra attributes like `#[cfg_attr(not(feature = "foo"), ignore)]`.
 - **Distinguish slow shrinking from memory blowup.** A model that *materializes elements* (e.g. a `BTreeSet<u64>` mirroring ranges) can be OOM-killed by inputs the subject handles symbolically — a SIGKILL mid-run looks like the slow-shrink hang but needs the opposite fix: bound the model-facing input sizes (documented as protecting the model, per Generator Discipline), don't reduce `test_cases`.
 - **Resource-owning machines and Drop order.** If the machine's fields hold resources with interdependent teardown (e.g. a write transaction and the database it came from), a wrong field order can deadlock in the generated drop — which looks exactly like hegel hanging mid-run. Order fields so dependents drop first, or wrap in `Option` and tear down explicitly in a rule.
 
@@ -852,3 +853,11 @@ fn test_my_system(tc: TestCase) {
 - `.is_empty()` / `.len()` — Inspect the pool
 
 Because pool choices go through `tc.draw`, they are recorded in failure replays and shrink like any other draw.
+
+## Keeping a Failing Test That Pins a Real Bug
+
+When you keep a test failing to document a genuine bug (per the main skill), make it fail *deterministically*: boost the generator toward the counterexample's region (a `one_of!` branch with the exact shape) and raise that one test's `test_cases` so the failure reproduces on every run — a probabilistically-failing test reads as flaky. Add a KNOWN FAILURE comment naming the bug.
+
+Two failure modes need special handling:
+- **Process-aborting bugs** (stack overflow, OOM): no hegel report or failure-database entry is written. To identify the aborting input, run with `--nocapture` and stream the drawn values via `eprintln!` (not `tc.note()`, which only prints on replay); keep the reproducer `#[ignore]`d.
+- **Engine panics** (a panic pointing inside hegeltest itself rather than your test or the library): re-run the test — the failure database replays and shrinking usually completes cleanly on the second run. Report the engine panic to hegel-rust with the test source.

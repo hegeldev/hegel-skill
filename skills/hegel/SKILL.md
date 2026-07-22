@@ -226,6 +226,7 @@ Properties must be **evidence-based**. Find evidence in:
 - **Names and type signatures**: A function `merge(a: List, b: List) -> List` implies the output length might equal the sum of input lengths.
 - **Docstrings and comments**: "Returns a sorted list" directly gives you an invariant.
 - **Assertions and debug checks in the source**: These are properties the author already identified — they may suggest other invariants.
+- **The crate's own dependencies**: exact or reference implementations often ship in the dependency tree (a geometry crate depending on exact predicates, a datetime crate depending on a tz database). These make independent oracles that can't be fooled by the same precision/logic errors as the code under test — and beware the converse: the crate's *own* sibling APIs (its `contains`, its validator) may share the bug and validate broken output.
 - **Usage patterns**: If callers always assume a result is non-empty, assert that.
 - **Existing tests**: Unit tests often encode specific instances of general properties.
 
