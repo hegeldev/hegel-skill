@@ -20,7 +20,7 @@ For generators that integrate with third-party crates (`chrono`, `jiff`, `serde_
 cargo add --dev hegeltest
 ```
 
-The *package* is named `hegeltest`, but its *library crate* is named `hegel`: all imports and attributes use the `hegel` name (`use hegel::generators;`, `#[hegel::test]`). In a Cargo workspace, add `-p <crate>` so the dependency lands in the right member's `Cargo.toml`.
+The *package* is named `hegeltest`, but its *library crate* is named `hegel`: all imports and attributes use the `hegel` name (`use hegel::generators;`, `#[hegel::test]`). In a Cargo workspace, add `-p <crate>` so the dependency lands in the right member's `Cargo.toml`. If the crate under test also appears inside hegeltest's own dependency tree (e.g. testing `miniz_oxide`, which hegeltest depends on), `cargo test -p <name>` is ambiguous — disambiguate with `-p <name>@<version>`.
 
 If the target crate pins a `rust-version` older than hegeltest's MSRV, `cargo add` fails with an MSRV resolution error; retry with `--ignore-rust-version`. When upstreaming such tests, call out the dev-dependency MSRV in the PR — whether to accept it is the maintainer's decision.
 
