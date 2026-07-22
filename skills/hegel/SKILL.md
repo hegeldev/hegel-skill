@@ -84,6 +84,10 @@ Run the tests. When a test fails, ask:
 - **Is the property unsound?** If you asserted something the code never promised, fix the test.
 - **Is the generator too broad?** Only if the failing input is genuinely outside the function's domain, add constraints. Investigate before constraining.
 
+### If Hegel Itself Won't Work
+
+If you cannot get hegel installed or compiling in the project, **stop and report the blocker with the exact error** — do not fall back to writing example-based tests and presenting them as property-based tests. That silently substitutes a different deliverable, and the blocker is usually one of the documented setup issues (crate naming, MSRV, old editions — check the language reference's Setup and Gotchas sections first).
+
 ### When NOT to Write PBTs
 
 Property-based tests aren't always the right tool. Prefer unit tests when:
@@ -179,6 +183,23 @@ result = my_numeric_op(a, b)  # should not overflow/panic
 | **Large input sizes** | exercise deep structure paths that small inputs miss | draw size separately, force 50-200+ elements for trees/tries |
 | **Feature flag testing** | non-default features are often less tested | enable SIMD, nightly, or experimental features and run tests |
 
+### Generate Configurations, Not Just Payloads
+
+When a library exposes a *builder or specification* for its core object — an encoding spec, parser options, layout style, compression level, schema — generate the configuration too, not just payloads for a handful of canned configurations. Running one round-trip property against every predefined configuration mostly re-tests the same code path; generating arbitrary *valid* configurations explores the interactions (padding × wrapping × translation, option × option) where bugs actually live. Build a composite generator that constructs valid configurations directly, encoding the documented validity rules as construction logic rather than filters:
+
+```pseudocode
+composite arbitrary_config(tc):
+    width = tc.draw(sampled_from(valid_widths))
+    symbols = tc.draw(lists(symbol_chars, size=width, unique=true))
+    config = Config(symbols)
+    if tc.draw(booleans()):
+        config.padding = tc.draw(chars_not_in(symbols))
+    ...
+    return config
+```
+
+The library's own fuzz targets (a `fuzz/` directory) are strong evidence for which object the maintainers consider worth generating — read them.
+
 ### Bug Patterns by Category
 
 | Category | What to look for |
@@ -229,6 +250,8 @@ Preemptively adding bounds like `.min(0).max(100)` means you'll never discover t
 ### Edge Cases Are the Point
 
 Don't narrow ranges to "avoid edge cases." If a function claims to work on all integers, test it on all integers — including `MIN`, `MAX`, `0`, `-1`, and `1`. If it breaks, that's valuable information.
+
+**Boundary conjunctions need help.** Some bugs require several drawn values to hit boundaries *simultaneously* (e.g. scale is `MIN` *and* the mantissa has trailing zeros). Uniform generation rarely produces such coincidences in a default run. When a property combines multiple drawn values, either boost boundary values explicitly (a `one_of` between the full range and a sample of `MIN`/`MAX`/`0`), or read the code for suspicious arithmetic on the drawn quantities and target the conjunction it implies.
 
 ### Don't Require Non-Empty by Default
 
@@ -319,7 +342,7 @@ If the code under test takes a concrete RNG type rather than a trait/interface, 
 
 6. **Using manually seeded RNGs** — Use hegel's random generator so hegel controls the random decisions and can shrink them individually. See "Handling Randomness" above.
 
-7. **Overflowing in test code** — When computing values from generated data (e.g., `map.insert(k, k * 10)`), your test code itself can overflow before the library has a chance to be buggy. Use wrapping arithmetic or draw a smaller type and widen it to prevent overflow in the test. Distinguish "this constraint protects the library's contract" (keep it) from "this constraint prevents my test from overflowing" (use wrapping arithmetic instead).
+7. **Overflowing in test code** — When computing values from generated data (e.g., `map.insert(k, k * 10)`), your test code itself can overflow before the library has a chance to be buggy. Use wrapping arithmetic or draw a smaller type and widen it to prevent overflow in the test. Distinguish "this constraint protects the library's contract" (keep it) from "this constraint prevents my test from overflowing" (use wrapping arithmetic instead). The same distinction applies to *memory*: an oracle or model that materializes what the library represents lazily (e.g. aligning two numbers whose exponents differ by 2^60) can OOM the test on inputs the library handles fine. Bound such inputs, and say in a comment that the bound protects the test's resources, not the library's contract — ideally keep a separate unbounded no-panic test for the extremes.
 
 8. **Restricting collection size for performance** — If a test is slow with large collections, lower the test case count rather than restricting the input space. A slow test that finds bugs beats a fast test that can't. Many tree/trie bugs only manifest at 50-200+ elements.
 

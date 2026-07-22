@@ -20,6 +20,12 @@ For generators that integrate with third-party crates (`chrono`, `jiff`, `serde_
 cargo add --dev hegeltest
 ```
 
+The *package* is named `hegeltest`, but its *library crate* is named `hegel`: all imports and attributes use the `hegel` name (`use hegel::generators;`, `#[hegel::test]`).
+
+If the target crate pins a `rust-version` older than hegeltest's MSRV, `cargo add` fails with an MSRV resolution error; retry with `--ignore-rust-version`. When upstreaming such tests, call out the dev-dependency MSRV in the PR — whether to accept it is the maintainer's decision.
+
+**Edition 2015 crates**: `use hegel::...` will not resolve on its own. Add `extern crate hegel;` at the top of the test file (integration tests) or `#[cfg(test)] extern crate hegel;` at the crate root (unit test modules). Everything else, including `#[hegel::test]`, works unchanged on edition 2015.
+
 If the code under test uses `rand` and you need hegel-controlled RNG instances, enable the `rand` feature:
 
 ```bash
@@ -28,7 +34,7 @@ cargo add --dev hegeltest --features rand
 
 Run tests with `cargo test`. Hegel tests use `#[hegel::test]` in place of `#[test]` and integrate directly with the standard Rust test runner.
 
-Hegel runs entirely in-process: the engine (the `hegeltest-c` crate) is a normal Cargo dependency compiled from source
+Hegel runs entirely in-process: the engine (the `hegeltest-c` crate) is a normal Cargo dependency compiled from source.
 
 ## Test Structure
 
@@ -171,10 +177,10 @@ Inside `#[hegel::test]`, `#[hegel::main]`, or `#[hegel::standalone_function]`, `
 All generators are in the `hegel::generators` module. Import with:
 
 ```rust
-use hegel::generators::{self, Generator};
+use hegel::generators;
 ```
 
-The `Generator` trait import is needed for combinator methods (`.map()`, `.filter()`, `.flat_map()`, `.boxed()`).
+Add the `Generator` trait — `use hegel::generators::{self, Generator};` — only when you use the combinator methods (`.map()`, `.filter()`, `.flat_map()`, `.boxed()`); importing it unused triggers an `unused_imports` warning.
 
 ### Numeric Generators
 
@@ -252,6 +258,13 @@ let u: () = tc.draw(generators::unit());
 // Sample from a fixed set
 let suit: &str = tc.draw(generators::sampled_from(
     vec!["hearts", "diamonds", "clubs", "spades"]));
+```
+
+`sampled_from` takes any `Vec` of owned values, not just `&str` — sampling which API object a property runs against is a workhorse pattern:
+
+```rust
+// e.g. run one property across every codec/encoding/config the crate ships
+let encoding: Encoding = tc.draw(generators::sampled_from(all_encodings()));
 ```
 
 ### Collection Generators
@@ -438,6 +451,18 @@ fn test_points(tc: hegel::TestCase) {
 
 This is generally preferred over `compose!` because it creates a named, reusable generator that can take parameters.
 
+The body must return a plain *value*, drawing from any inner generators with `tc.draw(...)`. Returning a generator expression (e.g. a bare `one_of!(...)`) is a type error — to combine generators inside a composite, draw from the combination:
+
+```rust
+#[hegel::composite]
+fn small_or_boundary(tc: hegel::TestCase) -> i64 {
+    tc.draw(hegel::one_of!(
+        generators::integers::<i64>().min_value(-100).max_value(100),
+        generators::sampled_from(vec![i64::MIN, i64::MAX]),
+    ))
+}
+```
+
 ### `compose!`
 
 Build an inline generator from imperative code (useful for one-off generators that don't need to be reused):
@@ -590,6 +615,21 @@ fn test_rejection_sampler(tc: hegel::TestCase) {
 }
 ```
 
+### Arbitrary-precision integers (num-bigint etc.)
+
+There is no built-in bignum generator. For crates built on `num-bigint`, combine a machine-integer generator (covers `MIN`/`MAX`/`0` boundaries) with digit-strings for values wider than any machine type:
+
+```rust
+#[hegel::composite]
+fn big_ints(tc: hegel::TestCase) -> BigInt {
+    tc.draw(hegel::one_of!(
+        generators::integers::<i128>().map(BigInt::from),
+        generators::from_regex(r"-?[1-9][0-9]{0,59}")
+            .map(|s: String| BigInt::from_str(&s).unwrap()),
+    ))
+}
+```
+
 ### Wrapping arithmetic in test values
 
 When computing test values from generated data, use wrapping operations to avoid panics in your *test* code:
@@ -612,7 +652,7 @@ let k_squared = k * k;  // can't overflow i32
 
 2. **`#[hegel::test]` replaces `#[test]`, not both.** Don't write `#[test] #[hegel::test]` — the hegel macro already generates the test attribute.
 
-3. **Add `.hegel/` to `.gitignore`.** Hegel stores its database of previous failures in `.hegel/examples` by default. Add `.hegel/` to `.gitignore`.
+3. **Add `.hegel/` to `.gitignore`.** Hegel stores its database of previous failures in `.hegel/examples` by default, created on the first recorded failure — don’t be surprised if it doesn’t appear until a test fails. Add `.hegel/` to `.gitignore` up front.
 
 4. **Float defaults include NaN and infinity.** `generators::floats::<f64>()` with no bounds generates NaN and infinity by default. If your code doesn't handle these, use `.allow_nan(false)` and/or `.allow_infinity(false)` — but consider whether the code *should* handle them first.
 
@@ -633,6 +673,8 @@ let k_squared = k * k;  // can't overflow i32
    let keys: Vec<i32> = tc.draw(generators::vecs(generators::integers::<i32>())
        .max_size(50).unique(true));
    ```
+
+10. **Passing tests print nothing extra.** A passing hegel test looks exactly like a passing unit test; there is no per-case output. To confirm cases are actually being generated, run once with `#[hegel::test(verbosity = Verbosity::Verbose)]`, or temporarily break the property and check that hegel reports a shrunk counterexample.
 
 ## Stateful Testing
 
@@ -684,13 +726,18 @@ fn test_integer_stack(tc: TestCase) {
 }
 ```
 
-- **`#[rule]`** methods are actions that can be applied. They take `&mut self` and `TestCase`. Use `tc.assume()` to skip a rule when it doesn't apply (e.g., can't pop from an empty stack).
-- **`#[invariant]`** methods are checked after every successful rule. They take `&self` and `TestCase`.
-- Call `hegel::stateful::run(machine, tc)` from a `#[hegel::test]` to execute.
+- **`#[rule]`** methods are actions that can be applied. They take `&mut self` (or `&self`) and `TestCase`. Use `tc.assume()` to skip a rule when it doesn't apply (e.g., can't pop from an empty stack).
+- **`#[invariant]`** methods are checked after every successful rule. They take `&self` (or `&mut self`) and `TestCase`. Invariants are optional — a machine with only rules is valid.
+- Call `hegel::stateful::run(machine, tc)` from a `#[hegel::test]` to execute. `run` consumes the machine, so any end-of-test assertions must live in an invariant (or in data the machine writes elsewhere) — you cannot inspect the machine after `run` returns.
+
+Two practical notes:
+
+- **Subjects that borrow.** If the type under test borrows other state (e.g. an incremental `Encoder<'a>` that mutably borrows its output buffer), it can't be stored in the machine alongside what it borrows. Store *owned inputs* (e.g. the fragments fed so far) in the machine instead, and reconstruct/finalize the borrowing object inside the rule or invariant that checks it.
+- **Compounding rules are slow.** Rules that multiply state size (e.g. `mul` on an arbitrary-precision number, appending to a document every step) make late steps expensive. Prefer moderate `test_cases` for such machines rather than shrinking the generated values.
 
 ### Pools
 
-For tests that need to track dynamically created resources (accounts, handles, keys), use `Pool`:
+For tests that need to track dynamically created resources (accounts, handles, keys), use `Pool`. A pool hands out *generators* over its contents, which you draw from with `tc.draw` like any other generator:
 
 ```rust
 use hegel::stateful::{Pool, pool};
@@ -710,14 +757,14 @@ impl MyTest {
 
     #[rule]
     fn use_account(&mut self, tc: TestCase) {
-        let account = tc.draw(self.accounts.values_reusable()).clone();  // borrows from pool
-        // ... do something with account
+        let account = tc.draw(self.accounts.values_reusable()).clone();
+        // ... do something with account; it stays in the pool
     }
 
     #[rule]
     fn delete_account(&mut self, tc: TestCase) {
-        let account = tc.draw(self.accounts.values_consumed());  // removes from pool
-        // ... clean up account
+        let account = tc.draw(self.accounts.values_consumed());
+        // ... clean up account; it has been removed from the pool
     }
 }
 
@@ -730,10 +777,10 @@ fn test_my_system(tc: TestCase) {
 }
 ```
 
-`Pool<T>` methods:
+`Pool<T>` API:
 - `.add(value)` — Add a value to the pool
-- `.values_reusable()` — Generator over `&T`; drawing borrows a random value without removing it (rejects the test case, as if by `assume(false)`, if empty)
-- `.values_consumed()` — Generator over `T`; drawing removes and returns a random value (rejects if empty)
+- `.values_reusable()` — Generator over `&T`: drawing yields a reference to a pool value without removing it (rejects the test case like `assume(false)` if the pool is empty)
+- `.values_consumed()` — Generator over `T`: drawing removes a value from the pool and yields it by value (rejects if empty)
 - `.is_empty()` / `.len()` — Inspect the pool
 
-Both are drawn through `tc.draw()`, so the chosen value appears in the failing-test replay and shrinks like any other draw.
+Because pool choices go through `tc.draw`, they are recorded in failure replays and shrink like any other draw.

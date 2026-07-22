@@ -180,7 +180,7 @@ Key differences:
 | `Arbitrary for T` (trait impl) | `Generator<T>` (trait impl) or `#[derive(DefaultGenerator)]` |
 | `fn arbitrary(g: &mut Gen) -> Self` | `fn do_draw(&self, tc: &TestCase) -> T` |
 | `fn shrink(&self) -> Box<dyn Iterator>` | Automatic — no shrink implementation needed |
-| `g.size()` for size control | Implicit — the engine controls size distribution |
+| `g.size()` for size control | Implicit — the engine controls size distribution (draw sizes explicitly if you need large values) |
 
 ### Common Patterns
 
@@ -210,11 +210,13 @@ fn test_division(tc: hegel::TestCase) {
 
 When porting tests from proptest or quickcheck:
 
-1. **Remove the old dependency** from `Cargo.toml` (if no other tests use it) and add hegel.
-2. **Replace the test macro/attribute** with `#[hegel::test]`.
-3. **Convert strategies/Arbitrary to `tc.draw()` calls.** Start with the broadest generators — don't carry over narrow bounds from the old framework unless they're justified by the function's contract.
-4. **Replace framework-specific assertions** (`prop_assert!`, bool returns) with standard `assert!`.
-5. **Replace `prop_assume!` / `TestResult::discard()`** with `tc.assume()`.
-6. **Simplify dependent generation.** If the old test used `flat_map` chains just to make later values depend on earlier ones, rewrite as sequential `tc.draw()` calls.
-7. **Remove custom `Shrink` implementations.** Hegel handles shrinking automatically.
-8. **Run the tests.** If they fail on inputs the old framework didn't find, investigate — that's the point.
+1. **Enumerate the existing properties first.** List every property the old suite tests (expand macros mentally — one `macro_rules!` invocation per type is one property per type). Ported coverage must be a superset of the original: map each old test to a hegel test, and explicitly note any property you intentionally drop and why. Do not rewrite the suite from scratch and assume you covered everything.
+2. **Check how the old suite is wired in before removing anything.** If the existing PBT suite is gated behind a non-default cfg flag or feature (e.g. `#[cfg(property_tests)]`), find out why — often MSRV or dependency weight. Removing the gate or deleting the suite is a behavior change for the maintainer's CI. Prefer adding hegel tests in a location that runs under plain `cargo test`, treating the gated suite as evidence, and leaving it untouched unless the maintainer asks.
+3. **Remove the old dependency** from `Cargo.toml` only if nothing else uses it and you've fully ported its tests; otherwise keep both.
+4. **Replace the test macro/attribute** with `#[hegel::test]`.
+5. **Convert strategies/Arbitrary to `tc.draw()` calls.** Start with the broadest generators — don't carry over narrow bounds from the old framework unless they're justified by the function's contract.
+6. **Replace framework-specific assertions** (`prop_assert!`, bool returns) with standard `assert!`.
+7. **Replace `prop_assume!` / `TestResult::discard()`** with `tc.assume()`.
+8. **Simplify dependent generation.** If the old test used `flat_map` chains just to make later values depend on earlier ones, rewrite as sequential `tc.draw()` calls.
+9. **Remove custom `Shrink` implementations.** Hegel handles shrinking automatically.
+10. **Run the tests.** If they fail on inputs the old framework didn't find, investigate — that's the point. One caution: if a test only fails *after you broadened* a ported generator, check whether the original narrow range was protecting a documented limit of the operation (precision, domain, resource bounds) rather than being historical timidity — see "Beware of properties that seem universal but aren't" in the main skill. Investigate before reporting a bug.
