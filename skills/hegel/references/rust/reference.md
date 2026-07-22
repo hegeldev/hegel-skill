@@ -26,6 +26,8 @@ If the target crate pins a `rust-version` older than hegeltest's MSRV, `cargo ad
 
 **Edition 2015 crates**: `use hegel::...` will not resolve on its own. Add `extern crate hegel;` at the top of the test file (integration tests) or `#[cfg(test)] extern crate hegel;` at the crate root (unit test modules). Everything else, including `#[hegel::test]`, works unchanged on edition 2015.
 
+**`no_std` crates**: `#[hegel::test]`'s generated code assumes the std prelude (it calls `.to_string()`), so unit-test modules in `#![no_std]` crates fail with E0599 pointing at the attribute. Fix: add `use std::string::ToString;` (or `use alloc::{format, string::ToString};` in `no_std + alloc` crates) to each test module. The tests themselves still run under std — this is only about name resolution inside the crate.
+
 If the code under test uses `rand` and you need hegel-controlled RNG instances, enable the `rand` feature:
 
 ```bash
@@ -355,6 +357,20 @@ let d: std::time::Duration = tc.draw(generators::durations()
 
 The `*_strings()` date/time generators are not configurable; for typed, boundable date/time values use the `chrono` or `jiff` extras (see `references/rust/extras.md`).
 
+### Characters and Codepoints
+
+There is no dedicated `char` generator. The idiom is drawing a codepoint and converting, with `one_of!` to weight interesting planes:
+
+```rust
+let c: char = tc.draw(hegel::one_of!(
+    generators::integers::<u32>().max_value(0x7F),                        // ASCII
+    generators::integers::<u32>().min_value(0x80).max_value(0xFFFF),      // BMP
+    generators::integers::<u32>().min_value(0x1_0000).max_value(0x10_FFFF), // supplementary
+).map(|n| char::from_u32(n).unwrap_or('\u{FFFD}')));
+```
+
+`generators::text()`'s character distribution is not documented/configurable — if a property lives on specific characters (line breaks, controls, combining marks), build the string from drawn codepoints or mix `text()` with targeted insertions rather than hoping `text()` produces them.
+
 ### Regex Generator
 
 ```rust
@@ -563,6 +579,20 @@ fn test_point(tc: hegel::TestCase) {
 
 These examples show Rust-specific features. For general property patterns (round-trip, model-based, idempotence, etc.), see the main skill's Property Catalogue.
 
+### Helper functions taking `&TestCase`
+
+Not every reusable draw needs a composite. A plain function taking `&hegel::TestCase` works and is often simpler, especially for effectful op-sequence generation inside state machines (`TestCase` methods take `&self`, so borrowing is all you need):
+
+```rust
+fn draw_key(tc: &hegel::TestCase) -> Vec<u8> {
+    tc.draw(generators::binary().max_size(64))
+}
+```
+
+Two differences from `#[hegel::composite]`: draws inside plain helpers print as unnamed `draw_N` in counterexamples (composites group them under the composite's span), and helpers can't be passed where a `Generator` is expected. For draw-heavy helpers whose individual values would clutter counterexample output, use `tc.draw_silent(...)` for the internals and `tc.note(...)` to record the assembled value.
+
+For sharing generators between `src/` unit tests and `tests/` integration tests, Rust visibility forces a choice: a `#[cfg(test)]` helpers module for unit tests plus a `tests/common/mod.rs` for integration tests (some duplication), or putting all hegel tests on one side.
+
 ### Dependent generation with sequential draws
 
 Hegel's imperative style means dependent generation is just sequential code — no `flat_map` needed:
@@ -693,6 +723,7 @@ let k_squared = k * k;  // can't overflow i32
    let n = tc.draw(generators::integers::<usize>().max_value(300));
    let keys: Vec<i32> = tc.draw(generators::vecs(generators::integers()).min_size(n));
    ```
+   The same applies to `text()`: for multi-kilobyte strings (rope/tree structures need them to grow internal levels), draw a target length and build the string (repeat a drawn seed chunk, or collect drawn codepoints) — `text().min_size(n)` with large drawn `n` works but shrinks less gracefully.
 
 9. **Use `.unique(true)` for map/set key generation.** When testing ordered maps or sets, generate unique keys to avoid ambiguity about which value wins:
    ```rust
@@ -768,6 +799,7 @@ Practical notes:
 - **Subjects that borrow.** If the type under test borrows other state (e.g. an incremental `Encoder<'a>` that mutably borrows its output buffer), it can't be stored in the machine alongside what it borrows. Store *owned inputs* (e.g. the fragments fed so far) in the machine instead, and reconstruct/finalize the borrowing object inside the rule or invariant that checks it.
 - **Compounding rules are slow.** Rules that multiply state size (e.g. `mul` on an arbitrary-precision number, appending to a document every step) make late steps expensive. Prefer moderate `test_cases` for such machines rather than shrinking the generated values.
 - **Shrinking a failing machine can take minutes** when rules do I/O (temp files, databases) or invariants are expensive — this is normal, not a hang. To iterate faster on a known failure, temporarily reduce `test_cases`. `verbosity = Verbosity::Verbose` shows `Step N: <rule>` lines and assumption-skips, which is the way to see what a machine is doing.
+- **Distinguish slow shrinking from memory blowup.** A model that *materializes elements* (e.g. a `BTreeSet<u64>` mirroring ranges) can be OOM-killed by inputs the subject handles symbolically — a SIGKILL mid-run looks like the slow-shrink hang but needs the opposite fix: bound the model-facing input sizes (documented as protecting the model, per Generator Discipline), don't reduce `test_cases`.
 - **Resource-owning machines and Drop order.** If the machine's fields hold resources with interdependent teardown (e.g. a write transaction and the database it came from), a wrong field order can deadlock in the generated drop — which looks exactly like hegel hanging mid-run. Order fields so dependents drop first, or wrap in `Option` and tear down explicitly in a rule.
 
 ### Pools

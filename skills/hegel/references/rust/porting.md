@@ -143,6 +143,14 @@ fn test_valid_index(tc: hegel::TestCase) {
 
 This is one of hegel's main ergonomic advantages — dependent generation is just sequential code, no combinator gymnastics needed.
 
+### RNG-based strategies (`prop_perturb`, seeded shuffles)
+
+Proptest strategies built on `prop_perturb` or an RNG (shuffles, weighted choices) have no direct hegel equivalent. Reimplement the randomness as explicit draws: a Fisher-Yates shuffle drawing each swap index via `tc.draw(integers::<usize>().max_value(i))`, weighted choices via a drawn percentage. This keeps every decision shrinkable. Reaching for hegel's `rand` extra is also possible but check versions first — the extra tracks one `rand` version, and the project may pin an older *or newer* one (both mismatch directions produce trait-incompatibility errors; see extras.md).
+
+### Size-biased discards
+
+Quickcheck/proptest generators are size-biased, so `discard`-style guards that "usually pass" there can reject most inputs under hegel's uniform draws and trip the `FilterTooMuch` health check. Convert discard guards into generator bounds or constructive generation when porting.
+
 ## From Quickcheck
 
 Quickcheck is simpler than proptest but more limited.

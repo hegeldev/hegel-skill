@@ -64,7 +64,7 @@ Before writing tests from scratch, check what already exists.
 
 **Unit tests and example-based tests** can often be evolved into PBTs. Tests with hardcoded seeds, parameterized examples, or multiple similar test cases are prime candidates. Load `references/evolving-tests.md` for detailed guidance on recognizing what property a unit test is hiding. If you can't immediately see the right property, start by parameterizing the test — replace concrete values with generated ones and keep a simple oracle. You can refine the property later.
 
-**Tests that use `rand` with fixed seeds** are especially good candidates — the randomness should come from hegel instead so failures produce shrinkable counterexamples.
+**Tests that use `rand` with fixed seeds** are especially good candidates — the randomness should come from hegel instead so failures produce shrinkable counterexamples. Default to *supplementing* rather than deleting: keep the original seeded test (it pins known-good behavior cheaply) and add the hegel version beside it, unless the original is fully subsumed and the maintainers would clearly prefer one test.
 
 When you evolve an existing test, **modify the existing test file** rather than creating a new one. Property-based tests are tests like any other and belong with the code they're testing. Do not create a separate file for hegel tests.
 
@@ -85,7 +85,7 @@ Run the tests. Two checks before trusting a green run:
 
 When a test fails, ask:
 
-- **Is this a real bug?** If the code violates its own contract, flag the bug to the user and ask what to do, or fix the code if instructed to do so. Special case: if the failure *aborts the process* (stack overflow, OOM-kill) rather than panicking, a permanently failing test would take the whole suite down with it — keep a minimal reproducer marked ignored/skipped with a comment explaining why, and document the bug prominently instead.
+- **Is this a real bug?** If the code violates its own contract, flag the bug to the user and ask what to do, or fix the code if instructed to do so. Special case: if the failure *aborts the process* (stack overflow, OOM-kill) rather than panicking, a permanently failing test would take the whole suite down with it — keep a minimal reproducer marked ignored/skipped with a comment explaining why, and document the bug prominently instead. Once a bug is pinned by one canonical failing test, it is fine to exclude that known-buggy input from *sibling* properties so they stay green and keep testing everything else — add a comment on each exclusion referencing the canonical test.
 - **Is the property unsound?** If you asserted something the code never promised, fix the test.
 - **Is the generator too broad?** Only if the failing input is genuinely outside the function's domain, add constraints. Investigate before constraining.
 
