@@ -153,8 +153,10 @@ assert once == twice
 
 ```pseudocode
 s = tc.draw(text())
-_ = MyType.parse(s)  # should return an error, never panic
+discard(MyType.parse(s))  # should return an error, never panic
 ```
+
+(Use your language's idiomatic way to discard the result — in lint-strict Rust projects `drop(...)` avoids `let_underscore_drop` warnings that `let _ =` triggers.)
 
 **Roundtrip tests** — `parse(format(x)) == x` for any serialize/deserialize pair. Test with the full input domain. Bugs hide at zero (scientific notation edge cases), large integers (precision loss through f64 for values > 2^53), and unusual string content.
 
@@ -256,6 +258,8 @@ Preemptively adding bounds like `.min(0).max(100)` means you'll never discover t
 ### Edge Cases Are the Point
 
 Don't narrow ranges to "avoid edge cases." If a function claims to work on all integers, test it on all integers — including `MIN`, `MAX`, `0`, `-1`, and `1`. If it breaks, that's valuable information.
+
+**Serializer round-trips: generate at the encode-set boundary.** When a round-trip property involves escaping or percent-encoding, read the writer's encode/escape set and generate characters *just outside* it — bugs live in the characters the writer forgot to escape, and uniform generation almost never lands on the one missing character (a credential-corrupting missing `:` survived a 10x run until the encode set was read and targeted).
 
 **Boundary conjunctions need help.** Some bugs require several drawn values to hit boundaries *simultaneously* (e.g. scale is `MIN` *and* the mantissa has trailing zeros). Uniform generation rarely produces such coincidences in a default run. When a property combines multiple drawn values, either boost boundary values explicitly (a `one_of` between the full range and a sample of `MIN`/`MAX`/`0`), or read the code for suspicious arithmetic on the drawn quantities and target the conjunction it implies.
 

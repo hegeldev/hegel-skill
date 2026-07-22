@@ -26,7 +26,7 @@ If the target crate pins a `rust-version` older than hegeltest's MSRV, `cargo ad
 
 **Edition 2015 crates**: `use hegel::...` will not resolve on its own. Add `extern crate hegel;` at the top of the test file (integration tests) or `#[cfg(test)] extern crate hegel;` at the crate root (unit test modules). Everything else, including `#[hegel::test]`, works unchanged on edition 2015.
 
-**`no_std` crates**: `#[hegel::test]`'s generated code assumes the std prelude (it calls `.to_string()` and `format!`), so unit-test modules in `#![no_std]` crates fail with E0599/E0425 pointing at the attribute. Fix: add `use std::{format, string::ToString};` (or `use alloc::{format, string::{String, ToString}};` in `no_std + alloc` crates) to each test module — composites returning `String` need the `String` import too. The tests themselves still run under std — this is only about name resolution inside the crate. Related: on edition ≤2018 crates, `panic!`/`assert!` single-argument messages are not format strings — `assert!(cond, "{x:?}")` prints the literal braces; pass format arguments explicitly.
+**`no_std` crates**: `#[hegel::test]`'s generated code assumes the std prelude (it calls `.to_string()` and `format!`), so unit-test modules in `#![no_std]` crates fail with E0599/E0425 pointing at the attribute. Fix: add `use std::{format, string::ToString};` (or `use alloc::{format, string::{String, ToString}};` in `no_std + alloc` crates) to each test module — composites returning `String` need the `String` import too. In crates that don't declare an `std` dependency at all (core-style `no_std`), `use std::...` itself fails E0433 — put `extern crate std;` inside the test module first. The tests themselves still run under std — this is only about name resolution inside the crate. Related: on edition ≤2018 crates, `panic!`/`assert!` single-argument messages are not format strings — `assert!(cond, "{x:?}")` prints the literal braces; pass format arguments explicitly.
 
 If the code under test uses `rand` and you need hegel-controlled RNG instances, enable the `rand` feature:
 
@@ -70,6 +70,8 @@ Attributes:
 - `suppress_health_check: [HealthCheck; N]` — Suppress specific health checks (see below)
 
 ### `Hegel::new().run()` (builder form)
+
+The closure is `FnMut(TestCase)` with no `'static` bound, so the builder form can borrow expensive shared fixtures (a test repo, a loaded font) that `#[hegel::test]`'s free function cannot.
 
 ```rust
 use hegel::{Hegel, Settings, Verbosity};
@@ -733,7 +735,7 @@ let k_squared = k * k;  // can't overflow i32
 
 10. **Generators are single-use values.** `tc.draw(gen)` takes the generator by value, so drawing twice from the same variable is a move error. Rebuild the generator per draw (they're cheap), or use a `BoxedGenerator` (`.boxed()`), which implements `Clone`.
 
-11. **Passing tests print nothing extra.** A passing hegel test looks exactly like a passing unit test; there is no per-case output. To confirm cases are actually being generated, run once with `#[hegel::test(verbosity = hegel::Verbosity::Verbose)]` (the qualified path — bare `Verbosity` is E0433 without an import), or temporarily break the property and check that hegel reports a shrunk counterexample. (A deliberate liveness-check failure leaves an entry in the `.hegel/` failure database — harmless, but delete `.hegel/` afterwards to avoid replaying it.)
+11. **Passing tests print nothing extra.** A passing hegel test looks exactly like a passing unit test; there is no per-case output. To confirm cases are actually being generated, run once with `#[hegel::test(verbosity = hegel::Verbosity::Verbose)]` (the qualified path — bare `Verbosity` is E0433 without an import), or temporarily break the property and check that hegel reports a shrunk counterexample. (A deliberate liveness-check failure leaves an entry in the `.hegel/` failure database — harmless, but delete `.hegel/` afterwards to avoid replaying it. The same applies while iterating on generators: the DB replays counterexamples recorded under the *old* generator, which can look like your new generator producing impossible values — `rm -rf .hegel` when a replayed failure makes no sense.)
 
 12. **Adding tests to existing test files can collide with existing names.** Two recurring cases: E0255 when a test-function name matches an existing one (alias your imports or rename), and E0659 ambiguous `assert_eq!` when the surrounding file glob-imports `pretty_assertions` (add `use pretty_assertions::assert_eq;` inside your new module, or use fully-qualified `core::assert_eq!`).
 
@@ -798,7 +800,8 @@ Practical notes:
 - **Invariants also run once on the initial state**, before any rule is applied — don't assert things that only become true after the first rule.
 - **Subjects that borrow.** If the type under test borrows other state (e.g. an incremental `Encoder<'a>` that mutably borrows its output buffer), it can't be stored in the machine alongside what it borrows. Store *owned inputs* (e.g. the fragments fed so far) in the machine instead, and reconstruct/finalize the borrowing object inside the rule or invariant that checks it.
 - **Compounding rules are slow.** Rules that multiply state size (e.g. `mul` on an arbitrary-precision number, appending to a document every step) make late steps expensive. Prefer moderate `test_cases` for such machines rather than shrinking the generated values.
-- **Shrinking a failing machine can take minutes** when rules do I/O (temp files, databases) or invariants are expensive — this is normal, not a hang. To iterate faster on a known failure, temporarily reduce `test_cases`. `verbosity = Verbosity::Verbose` shows `Step N: <rule>` lines and assumption-skips, which is the way to see what a machine is doing.
+- **For incremental/lazily-validated subjects, prefer a check *rule* over an invariant.** Invariants run after every step; if the check itself perturbs the subject (forcing lazy revalidation, warming caches), per-step checking masks exactly the paths you want to test. A drawn `check` rule exercises both checked and unchecked interleavings.
+- **Shrinking can take minutes** — for machines whose rules do I/O, but also for plain tests drawing large collections — this is normal, not a hang. To iterate faster on a known failure, temporarily reduce `test_cases`. `verbosity = Verbosity::Verbose` shows `Step N: <rule>` lines and assumption-skips, which is the way to see what a machine is doing.
 - **Attributes compose.** `#[hegel::test]` works together with extra attributes like `#[cfg_attr(not(feature = "foo"), ignore)]`.
 - **Distinguish slow shrinking from memory blowup.** A model that *materializes elements* (e.g. a `BTreeSet<u64>` mirroring ranges) can be OOM-killed by inputs the subject handles symbolically — a SIGKILL mid-run looks like the slow-shrink hang but needs the opposite fix: bound the model-facing input sizes (documented as protecting the model, per Generator Discipline), don't reduce `test_cases`.
 - **Resource-owning machines and Drop order.** If the machine's fields hold resources with interdependent teardown (e.g. a write transaction and the database it came from), a wrong field order can deadlock in the generated drop — which looks exactly like hegel hanging mid-run. Order fields so dependents drop first, or wrap in `Option` and tear down explicitly in a rule.
