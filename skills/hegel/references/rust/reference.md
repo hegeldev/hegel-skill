@@ -463,6 +463,26 @@ fn small_or_boundary(tc: hegel::TestCase) -> i64 {
 }
 ```
 
+Composites can draw from other composites — `tc.draw(points(100.0))` inside another composite works fine.
+
+**Recursive composites don't compile.** A `#[hegel::composite]` that (directly or mutually) draws from itself fails with an opaque `E0283`-style error about `impl Fn(TestCase) -> T` and `Send` — the opaque return type becomes self-referential. For recursive data (trees, nested documents), write a plain function that takes depth and returns a boxed generator via `compose!`:
+
+```rust
+fn toml_values(depth: u32) -> hegel::generators::BoxedGenerator<'static, Value> {
+    hegel::compose!(|tc| {
+        if depth == 0 || tc.draw(generators::integers::<u8>().max_value(3)) > 0 {
+            Value::from(tc.draw(generators::integers::<i64>()))
+        } else {
+            let inner = tc.draw(generators::vecs(toml_values(depth - 1)));
+            Value::from_iter(inner)
+        }
+    })
+    .boxed()
+}
+```
+
+Two details of that pattern: the return type needs the `'static` lifetime parameter spelled out, and `compose!` takes exactly `|tc| { ... }` — it inserts `move` itself, so writing `compose!(move |tc| ...)` is rejected.
+
 ### `compose!`
 
 Build an inline generator from imperative code (useful for one-off generators that don't need to be reused):
@@ -674,7 +694,9 @@ let k_squared = k * k;  // can't overflow i32
        .max_size(50).unique(true));
    ```
 
-10. **Passing tests print nothing extra.** A passing hegel test looks exactly like a passing unit test; there is no per-case output. To confirm cases are actually being generated, run once with `#[hegel::test(verbosity = Verbosity::Verbose)]`, or temporarily break the property and check that hegel reports a shrunk counterexample.
+10. **Generators are single-use values.** `tc.draw(gen)` takes the generator by value, so drawing twice from the same variable is a move error. Rebuild the generator per draw (they're cheap), or use a `BoxedGenerator` (`.boxed()`), which implements `Clone`.
+
+11. **Passing tests print nothing extra.** A passing hegel test looks exactly like a passing unit test; there is no per-case output. To confirm cases are actually being generated, run once with `#[hegel::test(verbosity = Verbosity::Verbose)]`, or temporarily break the property and check that hegel reports a shrunk counterexample.
 
 ## Stateful Testing
 

@@ -78,7 +78,12 @@ For each property:
 
 ### 6. Run and Reflect
 
-Run the tests. When a test fails, ask:
+Run the tests. Two checks before trusting a green run:
+
+- **Verify the tests are live.** Passing hegel tests print nothing extra, so temporarily break one property (invert an assertion), confirm hegel reports a shrunk counterexample, and revert. A suite that can't fail is worthless.
+- **Do one exploratory high-count run.** The default case count is tuned for CI, not for discovery — real bugs are regularly invisible at the default but found at 10x (boundary coincidences need the extra trials). Run the suite once with `test_cases` raised ~10x before concluding the code is clean, then drop back to the default for the committed tests.
+
+When a test fails, ask:
 
 - **Is this a real bug?** If the code violates its own contract, flag the bug to the user and ask what to do, or fix the code if instructed to do so.
 - **Is the property unsound?** If you asserted something the code never promised, fix the test.
