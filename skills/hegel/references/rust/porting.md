@@ -47,7 +47,7 @@ But consider: should those bounds be there at all? If the property is about addi
 | `any::<i32>()` | `generators::integers::<i32>()` |
 | `0..100i32` | `generators::integers::<i32>().min_value(0).max_value(99)` |
 | `any::<bool>()` | `generators::booleans()` |
-| `any::<f64>()` | `generators::floats::<f64>()` |
+| `any::<f64>()` | `generators::floats::<f64>()` — but note: proptest's `any::<f64>()` excludes NaN by default, hegel's `floats()` includes it. A mechanical port silently broadens the domain and breaks `==`-based roundtrips; decide explicitly whether NaN belongs to the property |
 | `"[a-z]{1,10}"` | `generators::from_regex(r"[a-z]{1,10}")` |
 | `any::<String>()` | `generators::text()` |
 | `prop::collection::vec(strat, 0..10)` | `generators::vecs(gen).max_size(9)` |

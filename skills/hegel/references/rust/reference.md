@@ -20,7 +20,7 @@ For generators that integrate with third-party crates (`chrono`, `jiff`, `serde_
 cargo add --dev hegeltest
 ```
 
-The *package* is named `hegeltest`, but its *library crate* is named `hegel`: all imports and attributes use the `hegel` name (`use hegel::generators;`, `#[hegel::test]`).
+The *package* is named `hegeltest`, but its *library crate* is named `hegel`: all imports and attributes use the `hegel` name (`use hegel::generators;`, `#[hegel::test]`). In a Cargo workspace, add `-p <crate>` so the dependency lands in the right member's `Cargo.toml`.
 
 If the target crate pins a `rust-version` older than hegeltest's MSRV, `cargo add` fails with an MSRV resolution error; retry with `--ignore-rust-version`. When upstreaming such tests, call out the dev-dependency MSRV in the PR — whether to accept it is the maintainer's decision.
 
@@ -249,7 +249,7 @@ Config methods (both):
 ### Constant and Choice Generators
 
 ```rust
-// Always returns the same value
+// Always returns the same value (T must be Clone + Send + Sync)
 let x: i32 = tc.draw(generators::just(42));
 
 // Always returns ()
@@ -267,6 +267,8 @@ let suit: &str = tc.draw(generators::sampled_from(
 let encoding: Encoding = tc.draw(generators::sampled_from(all_encodings()));
 ```
 
+Note `just` and `sampled_from` require `T: Send + Sync` (plus `Clone` for `just`). For non-`Send` values (tagged pointers, `Rc`-based types), draw a plain discriminant (`integers`/`sampled_from` over an enum of your own) and construct the value imperatively after the draw.
+
 ### Collection Generators
 
 **`generators::vecs(element_gen)`** — Generate `Vec<T>`
@@ -283,6 +285,8 @@ Config methods:
 - `.min_size(usize)` — Minimum length (default: 0)
 - `.max_size(usize)` — Maximum length
 - `.unique(bool)` — All elements distinct
+
+For an exact-size `Vec`, set both: `.min_size(n).max_size(n)`.
 
 **`generators::hashsets(element_gen)`** — Generate `HashSet<T>` where `T: Eq + Hash`
 
@@ -305,6 +309,8 @@ let m: HashMap<String, i32> = tc.draw(generators::hashmaps(
 ```rust
 let arr: [i32; 5] = tc.draw(generators::arrays(generators::integers::<i32>()));
 ```
+
+Let inference pick the size from the annotation — the function has three generic parameters (`arrays<G, T, const N>`), so the turbofish form `arrays::<i32, 5>(...)` is an E0107 error.
 
 ### Tuple Generators
 
@@ -696,7 +702,11 @@ let k_squared = k * k;  // can't overflow i32
 
 10. **Generators are single-use values.** `tc.draw(gen)` takes the generator by value, so drawing twice from the same variable is a move error. Rebuild the generator per draw (they're cheap), or use a `BoxedGenerator` (`.boxed()`), which implements `Clone`.
 
-11. **Passing tests print nothing extra.** A passing hegel test looks exactly like a passing unit test; there is no per-case output. To confirm cases are actually being generated, run once with `#[hegel::test(verbosity = Verbosity::Verbose)]`, or temporarily break the property and check that hegel reports a shrunk counterexample.
+11. **Passing tests print nothing extra.** A passing hegel test looks exactly like a passing unit test; there is no per-case output. To confirm cases are actually being generated, run once with `#[hegel::test(verbosity = Verbosity::Verbose)]`, or temporarily break the property and check that hegel reports a shrunk counterexample. (A deliberate liveness-check failure leaves an entry in the `.hegel/` failure database — harmless, but delete `.hegel/` afterwards to avoid replaying it.)
+
+12. **Adding tests to existing test files can collide with existing names.** Two recurring cases: E0255 when a test-function name matches an existing one (alias your imports or rename), and E0659 ambiguous `assert_eq!` when the surrounding file glob-imports `pretty_assertions` (add `use pretty_assertions::assert_eq;` inside your new module, or use fully-qualified `core::assert_eq!`).
+
+13. **There is no global case-count override** (no equivalent of `PROPTEST_CASES`). To run the exploratory 10x pass, temporarily edit `test_cases` in the attributes (or add `Settings` positionally), then revert.
 
 ## Stateful Testing
 
@@ -752,10 +762,13 @@ fn test_integer_stack(tc: TestCase) {
 - **`#[invariant]`** methods are checked after every successful rule. They take `&self` (or `&mut self`) and `TestCase`. Invariants are optional — a machine with only rules is valid.
 - Call `hegel::stateful::run(machine, tc)` from a `#[hegel::test]` to execute. `run` consumes the machine, so any end-of-test assertions must live in an invariant (or in data the machine writes elsewhere) — you cannot inspect the machine after `run` returns.
 
-Two practical notes:
+Practical notes:
 
+- **Invariants also run once on the initial state**, before any rule is applied — don't assert things that only become true after the first rule.
 - **Subjects that borrow.** If the type under test borrows other state (e.g. an incremental `Encoder<'a>` that mutably borrows its output buffer), it can't be stored in the machine alongside what it borrows. Store *owned inputs* (e.g. the fragments fed so far) in the machine instead, and reconstruct/finalize the borrowing object inside the rule or invariant that checks it.
 - **Compounding rules are slow.** Rules that multiply state size (e.g. `mul` on an arbitrary-precision number, appending to a document every step) make late steps expensive. Prefer moderate `test_cases` for such machines rather than shrinking the generated values.
+- **Shrinking a failing machine can take minutes** when rules do I/O (temp files, databases) or invariants are expensive — this is normal, not a hang. To iterate faster on a known failure, temporarily reduce `test_cases`. `verbosity = Verbosity::Verbose` shows `Step N: <rule>` lines and assumption-skips, which is the way to see what a machine is doing.
+- **Resource-owning machines and Drop order.** If the machine's fields hold resources with interdependent teardown (e.g. a write transaction and the database it came from), a wrong field order can deadlock in the generated drop — which looks exactly like hegel hanging mid-run. Order fields so dependents drop first, or wrap in `Option` and tear down explicitly in a rule.
 
 ### Pools
 
@@ -800,6 +813,7 @@ fn test_my_system(tc: TestCase) {
 ```
 
 `Pool<T>` API:
+- Drawing pool values goes through `tc.draw`, which requires `T: Debug` — the compile error appears at the draw site, not on `Pool<T>`. For non-`Debug` resources (file handles, savepoints), use `tc.draw_silent(...)` instead.
 - `.add(value)` — Add a value to the pool
 - `.values_reusable()` — Generator over `&T`: drawing yields a reference to a pool value without removing it (rejects the test case like `assume(false)` if the pool is empty)
 - `.values_consumed()` — Generator over `T`: drawing removes a value from the pool and yields it by value (rejects if empty)

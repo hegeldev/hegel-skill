@@ -85,7 +85,7 @@ Run the tests. Two checks before trusting a green run:
 
 When a test fails, ask:
 
-- **Is this a real bug?** If the code violates its own contract, flag the bug to the user and ask what to do, or fix the code if instructed to do so.
+- **Is this a real bug?** If the code violates its own contract, flag the bug to the user and ask what to do, or fix the code if instructed to do so. Special case: if the failure *aborts the process* (stack overflow, OOM-kill) rather than panicking, a permanently failing test would take the whole suite down with it — keep a minimal reproducer marked ignored/skipped with a comment explaining why, and document the bug prominently instead.
 - **Is the property unsound?** If you asserted something the code never promised, fix the test.
 - **Is the generator too broad?** Only if the failing input is genuinely outside the function's domain, add constraints. Investigate before constraining.
 
