@@ -149,14 +149,14 @@ twice = normalize(once)
 assert once == twice
 ```
 
-**Parse robustness** — Parsers (`from_str`, `parse`, `decode`) should handle all input without panicking. The property is simple: it should never crash, even on garbage input.
+**Parse robustness** — Parsers (`from_str`, `parse`, `decode`) should handle all input without panicking. The property is simple: it should never crash, even on garbage input. Pair it with the converse **validation/rejection** check: take a *valid* input, apply a mutation that makes it invalid per the grammar (inject a forbidden character, corrupt a length field, add leading zeros where banned), and assert the parser returns an error — no-panic and valid-roundtrip properties both miss parsers that silently accept bad input.
 
 ```pseudocode
 s = tc.draw(text())
 discard(MyType.parse(s))  # should return an error, never panic
 ```
 
-(Use your language's idiomatic way to discard the result — in lint-strict Rust projects `drop(...)` avoids `let_underscore_drop` warnings that `let _ =` triggers.)
+(Use your language's idiomatic way to discard the result — in lint-strict Rust projects `drop(...)` avoids `let_underscore_drop` warnings, though for `Copy` results it trips `dropping_copy_types` and `let _ =` is right; pick per the type.)
 
 **Roundtrip tests** — `parse(format(x)) == x` for any serialize/deserialize pair. Test with the full input domain. Bugs hide at zero (scientific notation edge cases), large integers (precision loss through f64 for values > 2^53), and unusual string content.
 
