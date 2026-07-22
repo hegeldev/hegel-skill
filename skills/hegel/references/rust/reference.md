@@ -38,6 +38,8 @@ Run tests with `cargo test`. Hegel tests use `#[hegel::test]` in place of `#[tes
 
 Hegel runs entirely in-process: the engine (the `hegeltest-c` crate) is a normal Cargo dependency compiled from source.
 
+Note that adding hegeltest substantially inflates the test binary. This is normally harmless, but pre-existing tests that read *their own binary* as sample data (a trick some codec crates use) suddenly process tens of megabytes and can look like a hung hegel property — check what a slow pre-existing test is actually reading before diagnosing.
+
 ## Test Structure
 
 ### `#[hegel::test]` (preferred)
@@ -594,6 +596,21 @@ fn draw_key(tc: &hegel::TestCase) -> Vec<u8> {
 Two differences from `#[hegel::composite]`: draws inside plain helpers print as unnamed `draw_N` in counterexamples (composites group them under the composite's span), and helpers can't be passed where a `Generator` is expected. For draw-heavy helpers whose individual values would clutter counterexample output, use `tc.draw_silent(...)` for the internals and `tc.note(...)` to record the assembled value.
 
 For sharing generators between `src/` unit tests and `tests/` integration tests, Rust visibility forces a choice: a `#[cfg(test)]` helpers module for unit tests plus a `tests/common/mod.rs` for integration tests (some duplication), or putting all hegel tests on one side.
+
+### Drawing schedules for streaming APIs
+
+When driving a streaming/chunked API, don't draw inside an unbounded feed loop (each draw consumes engine choices, and an input-dependent number of draws shrinks poorly). Draw a bounded *schedule* up front and cycle it:
+
+```rust
+let chunk_sizes: Vec<usize> = tc.draw(generators::vecs(
+    generators::integers::<usize>().min_value(1).max_value(64),
+).min_size(1).max_size(8));
+let mut i = 0;
+while has_more_input() {
+    feed(next_chunk(chunk_sizes[i % chunk_sizes.len()]));
+    i += 1;
+}
+```
 
 ### Dependent generation with sequential draws
 
