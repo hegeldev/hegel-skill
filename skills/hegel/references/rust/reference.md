@@ -460,6 +460,8 @@ All branches must yield the same *value* type; the generator types may differ (b
 
 Define a reusable generator as a function. The first parameter must be `TestCase`; additional parameters become arguments to the generator. The function must have an explicit return type.
 
+Note: the macro expands the body into a `Fn` closure, so a non-`Copy` extra parameter (e.g. `Vec<usize>`, `String`) captured across draws hits E0507 ("cannot move out of captured variable in an `Fn` closure"). Bind a `.clone()` of it inside the function before using it, or take it by a `Copy`/reference-friendly form.
+
 ```rust
 #[hegel::composite]
 fn points(tc: hegel::TestCase, max_coord: f64) -> (f64, f64) {
@@ -621,6 +623,24 @@ let src = format!("{a} + {b}");
 let expr = engine.compile_expression(&src)?;   // src outlives expr
 ```
 
+### Drawing a shrinkable random subset / permutation
+
+When a property needs "any k of these n items" (which shards to erase, which indices to drop), don't reach for `rand` — that gives an unshrinkable choice. Draw the selection through `tc` so it shrinks. A partial Fisher-Yates over drawn swap targets yields a uniform, fully-shrinkable subset:
+
+```rust
+fn draw_subset(tc: &hegel::TestCase, n: usize, k: usize) -> Vec<usize> {
+    let mut pool: Vec<usize> = (0..n).collect();
+    let mut chosen = Vec::with_capacity(k);
+    for i in 0..k {
+        // draw an index into the remaining pool; shrinks toward earlier items
+        let j = tc.draw(generators::integers::<usize>().min_value(i).max_value(n - 1));
+        pool.swap(i, j);
+        chosen.push(pool[i]);
+    }
+    chosen
+}
+```
+
 ### Dependent generation with sequential draws
 
 Hegel's imperative style means dependent generation is just sequential code — no `flat_map` needed:
@@ -705,6 +725,8 @@ When comparing floats with a magnitude-scaled tolerance, two failure modes bite 
 - **Underflow to zero.** An `eps * magnitude` *absolute* tolerance underflows to `0.0` for subnormal-scale inputs, so a legitimate 1-denormal-ULP residual reads as a failure. Floor the tolerance at `f64::MIN_POSITIVE`. Relatedly, a purely *relative* tolerance is unsound when subnormal intermediates appear — include an absolute term.
 - **The test's own oracle overflows first.** A `hypot`/sum-of-squares/product you compute to *check* the result can overflow to `inf`/`NaN` before the library misbehaves. Use a max-norm (or otherwise overflow-safe) formulation in the test, and suspect the test's arithmetic before reporting a boundary "bug".
 - **The floor may come from library constants, not ULPs.** A crate that ships lower-precision baked constants (e.g. 7-significant-digit color-conversion matrices) has a precision floor set by *those constants*, not by `f64::EPSILON` — a correct roundtrip can be off by ~1e-7. Read the constants to set the tolerance rather than deriving it from ulp arithmetic.
+- **For iterative numerics, the source's stop criterion IS the accuracy contract.** A function computed by Newton iteration, a series, or a root-find (many `inverse_cdf`/special-function implementations) is only as accurate as its own convergence test — e.g. a `while |Δ| > 1e-9` loop cannot deliver a relative-accurate answer deep in a tail. Read the stop criterion in the implementation and set your tolerance from *it*, not from the theoretical precision; a disagreement tighter than the code's own criterion is expected behavior, not a bug (a disagreement much *looser* than it — 138 orders off — is a real iteration-exhaustion bug).
+- **When pinning a hang/non-termination zone, exclude it with decades-wide margins.** If a property must skip a region because the code hangs or blows up there (e.g. an iterative routine that diverges past some parameter magnitude), the shrinker will walk a naive boundary exclusion right up to the edge and re-trigger the hang. Exclude generously (orders of magnitude inside the safe region) and pin the hang itself with a separate `#[ignore]`d reproducer.
 
 ### Arbitrary-precision integers (num-bigint etc.)
 
