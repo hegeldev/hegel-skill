@@ -160,7 +160,7 @@ discard(MyType.parse(s))  # should return an error, never panic
 
 (Use your language's idiomatic way to discard the result — in lint-strict Rust projects `drop(...)` avoids `let_underscore_drop` warnings, though for `Copy` results it trips `dropping_copy_types` and `let _ =` is right; pick per the type.)
 
-**Roundtrip tests** — `parse(format(x)) == x` for any serialize/deserialize pair. Test with the full input domain. Bugs hide at zero (scientific notation edge cases), large integers (precision loss through f64 for values > 2^53), and unusual string content.
+**Roundtrip tests** — `parse(format(x)) == x` for any serialize/deserialize pair. Test with the full input domain. Bugs hide at zero (scientific notation edge cases), large integers (precision loss through f64 for values > 2^53), and unusual string content. Also assert the roundtrip is a **fixpoint**: applying `parse∘format` a second time must not change the value or the serialized string. A roundtrip that drifts on the first pass but stabilizes afterward (e.g. a format that widens `f32`→`f64` on re-parse, so `"33644952.0"` re-serializes to `"33644950.0"`) passes a naive one-shot check but is a real value-corruption bug — the fixpoint form catches it, and it needs no external oracle (you hold the input).
 
 ```pseudocode
 n = tc.draw(integers())
