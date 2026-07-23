@@ -612,6 +612,15 @@ while has_more_input() {
 }
 ```
 
+### APIs whose returned handle borrows the input
+
+Some eval/parse APIs return a handle that *borrows* the source you passed (e.g. `compile_expression(src) -> Expression<'a>`). Calling one on a freshly-formatted string — `engine.compile_expression(&format!("{a} + {b}"))` — fails with E0716 (temporary dropped while borrowed), because the `format!` temporary dies at the end of the statement while the returned handle still borrows it. Bind the source to a `let` first, then pass a reference:
+
+```rust
+let src = format!("{a} + {b}");
+let expr = engine.compile_expression(&src)?;   // src outlives expr
+```
+
 ### Dependent generation with sequential draws
 
 Hegel's imperative style means dependent generation is just sequential code — no `flat_map` needed:
