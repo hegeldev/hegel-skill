@@ -695,6 +695,7 @@ fn test_rejection_sampler(tc: hegel::TestCase) {
 When comparing floats with a magnitude-scaled tolerance, two failure modes bite at the extremes of the input range and produce false counterexamples:
 - **Underflow to zero.** An `eps * magnitude` *absolute* tolerance underflows to `0.0` for subnormal-scale inputs, so a legitimate 1-denormal-ULP residual reads as a failure. Floor the tolerance at `f64::MIN_POSITIVE`. Relatedly, a purely *relative* tolerance is unsound when subnormal intermediates appear — include an absolute term.
 - **The test's own oracle overflows first.** A `hypot`/sum-of-squares/product you compute to *check* the result can overflow to `inf`/`NaN` before the library misbehaves. Use a max-norm (or otherwise overflow-safe) formulation in the test, and suspect the test's arithmetic before reporting a boundary "bug".
+- **The floor may come from library constants, not ULPs.** A crate that ships lower-precision baked constants (e.g. 7-significant-digit color-conversion matrices) has a precision floor set by *those constants*, not by `f64::EPSILON` — a correct roundtrip can be off by ~1e-7. Read the constants to set the tolerance rather than deriving it from ulp arithmetic.
 
 ### Arbitrary-precision integers (num-bigint etc.)
 
