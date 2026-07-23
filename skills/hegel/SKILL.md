@@ -221,6 +221,16 @@ The library's own fuzz targets (a `fuzz/` directory) are strong evidence for whi
 | **SIMD divergence** | SIMD code path produces different results than the scalar fallback |
 | **Deep structure bugs** | Traversal that only fails when data structure has multiple internal levels (50-200+ elements) |
 
+### Oracle Sourcing
+
+A property is only as good as its oracle — the independent source of truth it checks against. Beyond a hand-written reference implementation, these oracle patterns have repeatedly found real bugs:
+
+- **The crate's own dependency tree.** Exact or reference implementations often ship as dependencies (a geometry crate on exact predicates, a datetime crate on a tz database). They can't be fooled by the same precision/logic error as the code under test.
+- **A dispatcher's generic fallback vs its specialized fast path.** When a library has both a fast specialized routine and a general algorithm for the same query (a cuboid-cuboid distance shortcut and a GJK fallback; an ASCII fast path and a Unicode path), run both and assert they agree — one is usually the oracle for the other.
+- **A sibling API that must agree.** `distance(a,b) == 0` iff `intersects(a,b)`; `find(x).is_some()` iff `contains(x)`; a streaming API vs a one-shot API. But **beware the converse**: a sibling that shares the implementation (or is *defined* in terms of the code under test) can share the bug — a broken convex hull was accepted by the crate's own `contains`, which trusted the same broken geometry.
+- **Exhaustive enumeration over a small universe.** For "for all subsets / for all quorums / for all orderings" safety properties, generate the structure over a tiny fixed universe (say 5–7 elements) and check against brute-force enumeration of every subset (a bitmask loop). This turns an un-checkable universal claim into a decidable one and is how a consensus library's joint-quorum coherence was validated.
+- **The spec, transcribed.** For a wire format with a written spec, transcribe the spec's algorithm (a LEB128 encoder, an RFC length-header rule) as the oracle rather than trusting the crate's own encoder as its own reference.
+
 ### Choosing Properties
 
 Properties must be **evidence-based**. Find evidence in:
@@ -228,7 +238,7 @@ Properties must be **evidence-based**. Find evidence in:
 - **Names and type signatures**: A function `merge(a: List, b: List) -> List` implies the output length might equal the sum of input lengths.
 - **Docstrings and comments**: "Returns a sorted list" directly gives you an invariant.
 - **Assertions and debug checks in the source**: These are properties the author already identified — they may suggest other invariants.
-- **The crate's own dependencies**: exact or reference implementations often ship in the dependency tree (a geometry crate depending on exact predicates, a datetime crate depending on a tz database). These make independent oracles that can't be fooled by the same precision/logic errors as the code under test — and beware the converse: the crate's *own* sibling APIs (its `contains`, its validator) may share the bug and validate broken output.
+- **Oracles**: see the Oracle Sourcing section above for where independent sources of truth come from.
 - **Usage patterns**: If callers always assume a result is non-empty, assert that.
 - **Existing tests**: Unit tests often encode specific instances of general properties.
 
@@ -260,6 +270,8 @@ Preemptively adding bounds like `.min(0).max(100)` means you'll never discover t
 Don't narrow ranges to "avoid edge cases." If a function claims to work on all integers, test it on all integers — including `MIN`, `MAX`, `0`, `-1`, and `1`. If it breaks, that's valuable information.
 
 **Serializer round-trips: generate at the encode-set boundary.** When a round-trip property involves escaping or percent-encoding, read the writer's encode/escape set and generate characters *just outside* it — bugs live in the characters the writer forgot to escape, and uniform generation almost never lands on the one missing character (a credential-corrupting missing `:` survived a 10x run until the encode set was read and targeted).
+
+**Probe recursion depth directly.** For code that consumes recursive input (parsers, interpreters, decoders), a stack overflow or missing depth limit lives at nesting depths of hundreds to thousands — depths uniform random generation almost never reaches. Draw a depth explicitly and build input nested to it (`"(" * n + ")" * n`, deeply nested arrays/objects), sweeping n upward, rather than hoping a recursive generator wanders deep. This class (unbounded recursion aborting the process) recurred across every interpreter and several parsers tested.
 
 **Boundary conjunctions need help.** Some bugs require several drawn values to hit boundaries *simultaneously* (e.g. scale is `MIN` *and* the mantissa has trailing zeros). Uniform generation rarely produces such coincidences in a default run. When a property combines multiple drawn values, either boost boundary values explicitly (a `one_of` between the full range and a sample of `MIN`/`MAX`/`0`), or read the code for suspicious arithmetic on the drawn quantities and target the conjunction it implies.
 
