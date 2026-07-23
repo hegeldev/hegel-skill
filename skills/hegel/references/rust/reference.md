@@ -756,7 +756,9 @@ let k_squared = k * k;  // can't overflow i32
 
 12. **Adding tests to existing test files can collide with existing names.** Two recurring cases: E0255 when a test-function name matches an existing one (alias your imports or rename), and E0659 ambiguous `assert_eq!` when the surrounding file glob-imports `pretty_assertions` (add `use pretty_assertions::assert_eq;` inside your new module, or use fully-qualified `core::assert_eq!`).
 
-13. **There is no global case-count override** (no equivalent of `PROPTEST_CASES`). To run the exploratory 10x pass, temporarily edit `test_cases` in the attributes (or add `Settings` positionally), then revert.
+13. **Lint-strict crates may need `#[allow(...)]` on hegel tests.** `#[hegel::test]`'s generated code can trip a crate's own strict lints (`disallowed_methods`, `doc_markdown`, `clippy::pedantic`); add the needed `#[allow(...)]` to the test module rather than assuming your test is wrong.
+
+14. **There is no global case-count override** (no equivalent of `PROPTEST_CASES`). To run the exploratory 10x pass, temporarily edit `test_cases` in the attributes (or add `Settings` positionally), then revert.
 
 ## Stateful Testing
 

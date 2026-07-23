@@ -231,6 +231,8 @@ A property is only as good as its oracle — the independent source of truth it 
 - **Exhaustive enumeration over a small universe.** For "for all subsets / for all quorums / for all orderings" safety properties, generate the structure over a tiny fixed universe (say 5–7 elements) and check against brute-force enumeration of every subset (a bitmask loop). This turns an un-checkable universal claim into a decidable one and is how a consensus library's joint-quorum coherence was validated.
 - **The spec, transcribed.** For a wire format with a written spec, transcribe the spec's algorithm (a LEB128 encoder, an RFC length-header rule) as the oracle rather than trusting the crate's own encoder as its own reference.
 
+**Audit a floating-point oracle before trusting a tiny disagreement.** If your oracle is itself an external library (a JSON parser, another codec) and it disagrees by ~1 ULP, suspect the *oracle* first — the reference may round differently than the code under test (a JSON crate's default float parser vs its opt-in round-trip mode). Confirm the oracle is exact for the domain before reporting a 1-ULP mismatch as a bug.
+
 ### Choosing Properties
 
 Properties must be **evidence-based**. Find evidence in:
