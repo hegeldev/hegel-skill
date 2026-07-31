@@ -70,10 +70,11 @@ Keep the project's existing test runner — if you were using `RC_BOOST_PROP` wi
 | `rc::gen::map(gen, fn)` / `gen.map(fn)` | `gen.map(fn)` |
 | `rc::gen::mapcat(gen, fn)` | `gen.flat_map(fn)` |
 | `rc::gen::suchThat(gen, pred)` | `gen.filter(pred)` |
+| `rc::gen::construct<T>(g1, g2)` | `gs::builds<T>(g1, g2)` |
 | `rc::gen::exec(lambda)` | `gs::compose(lambda)` |
 | Custom `rc::Arbitrary<T>` specialization | `gs::default_generator<T>()` or `gs::builds<T>` / `gs::builds_agg<T>` |
 
-RapidCheck has no built-in regex, format (emails/URLs/dates), or RNG-controlled generator — you had to build those manually. Use hegel's `gs::from_regex`, `gs::emails`, `gs::urls`, `gs::dates`, `gs::randoms`, etc. directly.
+RapidCheck has no built-in regex, format (emails/URLs/UUIDs/dates), or RNG-controlled generator — you had to build those manually. Use hegel's `gs::from_regex`, `gs::emails`, `gs::urls`, `gs::uuids`, `gs::dates`, `gs::randoms`, etc. directly.
 
 ### Assertions and Preconditions
 

@@ -5,7 +5,7 @@
 [fast-check](https://fast-check.dev) is overwhelmingly the most common TypeScript PBT library. The main differences:
 
 - fast-check is declarative: arbitraries are declared up front and threaded into the property via `fc.property(...)`. Hegel is imperative — your test receives a `TestCase` and calls `tc.draw()` whenever it needs a value.
-- fast-check does shrinking in-process; hegel delegates shrinking to a Python server (Hypothesis).
+- fast-check does shrinking in pure JS; hegel delegates generation and shrinking to libhegel, a native Rust engine (based on Hypothesis) loaded in-process via FFI.
 - fast-check tests return `true`/`void`/throw; hegel tests use the surrounding runner's normal assertions (`expect`, `assert`, throw).
 - fast-check has `fc.commands` for stateful testing and `fc.pre` for preconditions; hegel uses `tc.assume()` (stateful testing is not yet available in hegel-typescript).
 
@@ -66,7 +66,7 @@ Notes:
 | `fc.unicodeString()` | `gs.text()` (hegel defaults to full Unicode) |
 | `fc.char()` / `fc.unicode()` | `gs.characters()` |
 | `fc.uint8Array()` | `gs.binary()` |
-| `fc.stringMatching(re)` | `gs.fromRegex(re.source, { fullmatch: true })` |
+| `fc.stringMatching(re)` | `gs.fromRegex(re.source)` *(fullmatch by default)* |
 | `fc.constant(x)` | `gs.just(x)` |
 | `fc.constantFrom(...xs)` | `gs.sampledFrom([...xs])` |
 | `fc.oneof(a, b)` | `gs.oneOf(a, b)` |

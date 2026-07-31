@@ -5,7 +5,7 @@
 Proptest is the most common Rust PBT library. The main differences:
 
 - Proptest is declarative (strategies in function signatures or the `proptest!` macro); hegel is imperative (`tc.draw()` calls).
-- Proptest does shrinking in-process; hegel delegates to a server.
+- Proptest shrinking is defined per-Strategy; hegel's engine shrinks the underlying choice sequence automatically, so there are no shrinkers to write or preserve.
 - Proptest uses `prop_assert!`; hegel uses standard `assert!`.
 
 ### Test Structure
@@ -48,7 +48,7 @@ But consider: should those bounds be there at all? If the property is about addi
 | `0..100i32` | `generators::integers::<i32>().min_value(0).max_value(99)` |
 | `any::<bool>()` | `generators::booleans()` |
 | `any::<f64>()` | `generators::floats::<f64>()` |
-| `"[a-z]{1,10}"` | `generators::from_regex(r"[a-z]{1,10}").fullmatch(true)` |
+| `"[a-z]{1,10}"` | `generators::from_regex(r"[a-z]{1,10}")` |
 | `any::<String>()` | `generators::text()` |
 | `prop::collection::vec(strat, 0..10)` | `generators::vecs(gen).max_size(9)` |
 | `prop::collection::hash_set(strat, 0..5)` | `generators::hashsets(gen).max_size(4)` |
@@ -76,7 +76,7 @@ But consider: should those bounds be there at all? If the property is about addi
 | Proptest | Hegel |
 |----------|-------|
 | `ProptestConfig::with_cases(500)` | `#[hegel::test(test_cases = 500)]` |
-| `ProptestConfig { max_shrink_iters: 0, .. }` | No equivalent — hegel always shrinks |
+| `ProptestConfig { max_shrink_iters: 0, .. }` | `Settings::phases` without `Phase::Shrink` |
 | `PROPTEST_CASES=500` env var | No equivalent |
 
 ### Derive
@@ -180,7 +180,7 @@ Key differences:
 | `Arbitrary for T` (trait impl) | `Generator<T>` (trait impl) or `#[derive(DefaultGenerator)]` |
 | `fn arbitrary(g: &mut Gen) -> Self` | `fn do_draw(&self, tc: &TestCase) -> T` |
 | `fn shrink(&self) -> Box<dyn Iterator>` | Automatic — no shrink implementation needed |
-| `g.size()` for size control | Implicit in server-based generation |
+| `g.size()` for size control | Implicit — the engine controls size distribution |
 
 ### Common Patterns
 

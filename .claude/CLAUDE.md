@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Repository Purpose
 
-This repo is the `hegel-skill` Agent Skill (distributed via the [Agent Skills](https://agentskills.io) standard). It teaches coding agents how to write property-based tests with [Hegel](https://github.com/hegeldev/hegel-core) — a PBT protocol with language-specific libraries (currently Rust, Go, and C++), all powered by a Python/Hypothesis server.
+This repo is the `hegel-skill` Agent Skill (distributed via the [Agent Skills](https://agentskills.io) standard). It teaches coding agents how to write property-based tests with [Hegel](https://hegel.dev) — a PBT protocol with language-specific libraries (currently Rust, Go, C++, TypeScript, Java, and OCaml), all powered by libhegel, a shared native engine based on Hypothesis and shipped by [hegel-rust](https://github.com/hegeldev/hegel-rust).
 
 This repo is **content, not code**: there is no build, test, or lint step. Edits here directly change agent behavior, so wording and structure matter.
 
@@ -17,11 +17,18 @@ skills/hegel/
   references/
     evolving-tests.md   # Shared: turning unit tests into PBTs
     rust/reference.md   # Rust API surface (hegeltest)
+    rust/extras.md      # Rust extras integrations (chrono, jiff, serde_json, rand)
     rust/porting.md     # Porting from proptest/quickcheck -> hegel
     go/reference.md     # Go API surface
     go/porting.md       # Porting from rapid/gopter -> hegel
     cpp/reference.md    # C++ API surface (hegel-cpp, GTest integration)
     cpp/porting.md      # Porting from rapidcheck -> hegel
+    typescript/reference.md # TypeScript API surface (@hegeldev/hegel)
+    typescript/porting.md   # Porting from fast-check -> hegel
+    java/reference.md       # Java API surface (dev.hegel:hegel, JUnit integration)
+    java/porting.md         # Porting from jqwik/junit-quickcheck/QuickTheories -> hegel
+    ocaml/reference.md      # OCaml API surface (hegel opam package, PPX deriver)
+    ocaml/porting.md        # Porting from QCheck/Crowbar -> hegel
 ```
 
 `SKILL.md` is loaded first; reference files are loaded lazily per the workflow in step 1. Keep that split intact — don't inline language-specific syntax into `SKILL.md`, and don't put cross-language methodology into the per-language references.

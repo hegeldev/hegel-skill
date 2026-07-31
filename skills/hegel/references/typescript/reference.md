@@ -17,11 +17,11 @@
 npm install --save-dev @hegeldev/hegel
 ```
 
-Hegel requires **Node 16+**. Bun and Deno are not currently supported.
+Hegel requires **Node 20.11+**, **Bun 1.2.5+**, or **Deno 2+** (Deno needs `--allow-ffi --allow-read --allow-env`).
 
 Hegel is **test-runner agnostic** — `hegel.test(...)` is a regular function that runs the property, shrinks on failure, and throws on the minimal counterexample. Use whatever runner the project already uses (Vitest, Jest, Mocha, node:test).
 
-Run your tests with the existing runner (e.g. `npx vitest run`). The first invocation auto-installs the `hegel-core` Python server via `uv`. If something goes wrong with that, see https://hegel.dev/reference/installation.
+Run your tests with the existing runner (e.g. `npx vitest run`). Generation and shrinking are handled by **libhegel**, a native Rust engine loaded in-process via FFI. It ships as a per-platform npm package (`@hegeldev/hegel-<os>-<arch>`, an optional dependency of `@hegeldev/hegel`), so `npm install` fetches it automatically.
 
 ## Test Structure
 
@@ -84,6 +84,7 @@ hegel.test(
 | `derandomize` | `boolean` | `true` in CI | Use a deterministic seed derived from the test |
 | `database` | `Database` | `unset` (`disabled` in CI) | Failing-example persistence |
 | `suppressHealthCheck` | `HealthCheck[]` | `[]` | Suppress specific health checks |
+| `reportMultipleFailures` | `boolean` | `false` | Keep generating after the first failure to surface additional *distinct* failures (different origins) |
 
 ### HealthCheck
 
@@ -223,7 +224,7 @@ Fields:
 - `includeCharacters?: string` — Always include these
 - `excludeCharacters?: string` — Always exclude these
 
-**`gs.characters(options?)`** — Generate a single-codepoint `string`. Same character-filtering options as `text` (no size fields, no `alphabet`).
+**`gs.characters(options?)`** — Generate a single-codepoint `string`. Same character-filtering options as `text` (including `alphabet`; no size fields).
 
 **`gs.binary(options?)`** — Generate `Uint8Array`
 
@@ -237,10 +238,10 @@ Fields: `minSize?: number`, `maxSize?: number`.
 **`gs.fromRegex(pattern, options?)`** — Generate strings matching a regex
 
 ```typescript
-const code = tc.draw(gs.fromRegex("[A-Z]{3}-[0-9]{3}", { fullmatch: true }));
+const code = tc.draw(gs.fromRegex("[A-Z]{3}-[0-9]{3}"));
 ```
 
-The pattern is a string (not a JS `RegExp` literal). `fullmatch` controls whether the entire string must match.
+The pattern is a string (not a JS `RegExp` literal). `fullmatch` defaults to `true` (the entire string must match); pass `{ fullmatch: false }` to allow the pattern to match a substring.
 
 ### Constant and Choice Generators
 
@@ -316,7 +317,7 @@ Transform generated values:
 const positiveStr = gs.integers({ minValue: 1 }).map((n) => n.toString());
 ```
 
-`.map()` preserves the underlying schema when the source is schema-backed, so mapped primitives are still generated efficiently on the server.
+`.map()` preserves the underlying schema when the source is schema-backed, so mapped primitives are still generated efficiently by the engine.
 
 ### `.filter(predicate)`
 
@@ -468,10 +469,10 @@ If a function under test says it accepts arbitrarily large integers, test it wit
     const keys = tc.draw(gs.arrays(gs.integers(), { maxSize: 50, unique: true }));
     ```
 
-12. **Add `.hegel/` to `.gitignore`.** Hegel caches the server binary and the failing-example database under `.hegel/` in your project root.
+12. **Add `.hegel/` to `.gitignore`.** Hegel stores the failing-example database under `.hegel/` in your project root.
 
 13. **`fromRegex` takes a string pattern, not a `RegExp`.** Pass `"[A-Z]{3}"`, not `/[A-Z]{3}/`.
 
 14. **`target()` and stateful testing are not yet available** in hegel-typescript. They are planned for future releases. Until stateful testing lands, write rule loops by hand inside `hegel.test`/`hegel.testAsync` (draw a rule choice with `gs.sampledFrom`, dispatch, assert invariants).
 
-15. **Node 16+ only.** Bun and Deno are not currently supported.
+15. **Node 20.11+, Bun 1.2.5+, or Deno 2+.** Deno requires the `--allow-ffi --allow-read --allow-env` flags (hegel loads the native libhegel engine via FFI).

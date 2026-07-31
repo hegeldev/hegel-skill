@@ -10,14 +10,15 @@
 - [Macros](#macros) — `one_of!`, `#[hegel::composite]`, `compose!`, `#[derive(DefaultGenerator)]`, `derive_generator!`
 - [Rust-Specific Examples](#rust-specific-examples) — Derived generators, randomness, dependent generation
 - [Gotchas](#gotchas)
-- [Stateful Testing](#stateful-testing) — `#[hegel::state_machine]`, rules, invariants, Variables
+- [Stateful Testing](#stateful-testing) — `#[hegel::state_machine]`, rules, invariants, Pools
 
 For generators that integrate with third-party crates (`chrono`, `jiff`, `serde_json`, `rand`), see `references/rust/extras.md`. Load that file only when the code under test uses one of those crates.
 
 ## Setup
 
 ```bash
-cargo add --dev hegeltest```
+cargo add --dev hegeltest
+```
 
 If the code under test uses `rand` and you need hegel-controlled RNG instances, enable the `rand` feature:
 
@@ -27,7 +28,7 @@ cargo add --dev hegeltest --features rand
 
 Run tests with `cargo test`. Hegel tests use `#[hegel::test]` in place of `#[test]` and integrate directly with the standard Rust test runner.
 
-If something goes wrong with server installation, see https://hegel.dev/reference/installation.
+Hegel runs entirely in-process: the engine (the `hegeltest-c` crate) is a normal Cargo dependency compiled from source
 
 ## Test Structure
 
@@ -107,8 +108,12 @@ fn test_positional(tc: hegel::TestCase) { /* ... */ }
 - `.verbosity(Verbosity)` — Output level
 - `.seed(Option<u64>)` — Fixed seed for reproducibility
 - `.derandomize(bool)` — Use deterministic seed from test name (default: `true` in CI)
-- `.database(Option<String>)` — Path for failure database, or `None` to disable
-- `.suppress_health_check(impl IntoIterator<Item = HealthCheck>)` — Suppress checks
+- `.database(Option<String>)` — Path for failure database (default: `.hegel/examples`), or `None` to disable
+- `.suppress_health_check(impl IntoIterator<Item = HealthCheck>)` — Suppress checks; *replaces* any previously configured suppressions, so pass all checks in one call
+- `.phases(impl IntoIterator<Item = Phase>)` — Restrict which lifecycle phases run (`Phase::Explicit`, `Reuse`, `Generate`, `Target`, `Shrink`); e.g. omitting `Phase::Shrink` disables shrinking
+- `.print_blob(bool)` — On failure, print a base64 blob replayable via `#[hegel::reproduce_failure("…")]` stacked below `#[hegel::test]` (default: `false`)
+- `.report_multiple_failures(bool)` — Report every distinct failure found instead of only the first (default: `false`)
+- `.backend(Backend)` — Randomness source; `Backend::Urandom` exists for running under Antithesis (auto-selected there)
 
 `HealthCheck` variants:
 - `FilterTooMuch` — Too many test cases rejected via `assume()`
@@ -233,6 +238,8 @@ Config methods (both):
 - `.min_size(usize)` — Minimum length (default: 0)
 - `.max_size(usize)` — Maximum length
 
+`text()` also takes character constraints: `.alphabet("abc")`, `.codec("ascii")`, `.min_codepoint(u32)` / `.max_codepoint(u32)`, `.categories(&["Lu"])` / `.exclude_categories(&[...])` (Unicode general categories), `.include_characters("é")` / `.exclude_characters("\0")`. `generators::characters()` generates single `char`s with the same constraint methods (minus `.alphabet` — use `sampled_from` for that).
+
 ### Constant and Choice Generators
 
 ```rust
@@ -256,13 +263,13 @@ let v: Vec<i32> = tc.draw(generators::vecs(generators::integers::<i32>()));
 let bounded: Vec<i32> = tc.draw(generators::vecs(generators::integers::<i32>())
     .min_size(1).max_size(10));
 let unique: Vec<i32> = tc.draw(generators::vecs(generators::integers::<i32>())
-    .unique());
+    .unique(true));
 ```
 
 Config methods:
 - `.min_size(usize)` — Minimum length (default: 0)
 - `.max_size(usize)` — Maximum length
-- `.unique()` — All elements distinct
+- `.unique(bool)` — All elements distinct
 
 **`generators::hashsets(element_gen)`** — Generate `HashSet<T>` where `T: Eq + Hash`
 
@@ -280,24 +287,15 @@ let m: HashMap<String, i32> = tc.draw(generators::hashmaps(
 ).max_size(5));
 ```
 
-**`generators::arrays::<T, N>(element_gen)`** — Generate `[T; N]`
+**`generators::arrays(element_gen)`** — Generate `[T; N]` (annotate the binding to pin `N`)
 
 ```rust
-let arr: [i32; 5] = tc.draw(generators::arrays::<i32, 5>(generators::integers()));
-```
-
-**`generators::fixed_dicts()`** — Generate CBOR maps with fixed keys
-
-```rust
-let map = tc.draw(generators::fixed_dicts()
-    .field("name", generators::text())
-    .field("age", generators::integers::<u32>())
-    .build());
+let arr: [i32; 5] = tc.draw(generators::arrays(generators::integers::<i32>()));
 ```
 
 ### Tuple Generators
 
-Use the `tuples!` macro with 2–12 component generators:
+Use the `tuples!` macro with up to 12 component generators:
 
 ```rust
 let pair: (i32, String) = tc.draw(generators::tuples!(
@@ -324,22 +322,28 @@ let maybe: Option<i32> = tc.draw(
 ```rust
 let email: String = tc.draw(generators::emails());
 let url: String = tc.draw(generators::urls());
-let domain: String = tc.draw(generators::domains().with_max_length(50));
-let date: String = tc.draw(generators::dates());        // YYYY-MM-DD
-let time: String = tc.draw(generators::times());         // HH:MM:SS
-let dt: String = tc.draw(generators::datetimes());
-let ipv4: String = tc.draw(generators::ip_addresses().v4());
-let ipv6: String = tc.draw(generators::ip_addresses().v6());
+let domain: String = tc.draw(generators::domains().max_length(50));
+let uuid: String = tc.draw(generators::uuids());              // hyphenated; .version(4) to pin
+let date: String = tc.draw(generators::date_strings());       // YYYY-MM-DD
+let time: String = tc.draw(generators::time_strings());       // HH:MM:SS[.ffffff]
+let dt: String = tc.draw(generators::datetime_strings());     // ISO 8601
+let ip: std::net::IpAddr = tc.draw(generators::ip_addresses());
+let ipv4: std::net::Ipv4Addr = tc.draw(generators::ip_addresses().v4());
+let ipv6: std::net::Ipv6Addr = tc.draw(generators::ip_addresses().v6());
+let d: std::time::Duration = tc.draw(generators::durations()
+    .max_value(std::time::Duration::from_secs(60)));
 ```
+
+The `*_strings()` date/time generators are not configurable; for typed, boundable date/time values use the `chrono` or `jiff` extras (see `references/rust/extras.md`).
 
 ### Regex Generator
 
 ```rust
-let code: String = tc.draw(
-    generators::from_regex(r"[A-Z]{3}-[0-9]{3}").fullmatch(true));
+let code: String = tc.draw(generators::from_regex(r"[A-Z]{3}-[0-9]{3}"));
 ```
 
-- `.fullmatch(bool)` — Require the pattern matches the entire string
+- `.fullmatch(bool)` — Whether the entire string must match the pattern (default: `true`); `false` generates strings that merely contain a match
+- `.alphabet(generators::characters()...)` — Constrain which characters may appear
 
 ## Combinator Methods
 
@@ -473,7 +477,7 @@ fn test_user(tc: hegel::TestCase) {
     // Customize specific fields:
     let adult: User = tc.draw(User::default_generator()
         .age(generators::integers().min_value(18).max_value(120))
-        .name(generators::from_regex(r"[A-Z][a-z]{2,15}").fullmatch(true)));
+        .name(generators::from_regex(r"[A-Z][a-z]{2,15}")));
     assert!(adult.age >= 18);
 }
 ```
@@ -608,7 +612,7 @@ let k_squared = k * k;  // can't overflow i32
 
 2. **`#[hegel::test]` replaces `#[test]`, not both.** Don't write `#[test] #[hegel::test]` — the hegel macro already generates the test attribute.
 
-3. **Add `.hegel/` to `.gitignore`.** Hegel creates a `.hegel/` directory for caching the server binary and storing the database of previous failures. Add it to `.gitignore`.
+3. **Add `.hegel/` to `.gitignore`.** Hegel stores its database of previous failures in `.hegel/examples` by default. Add `.hegel/` to `.gitignore`.
 
 4. **Float defaults include NaN and infinity.** `generators::floats::<f64>()` with no bounds generates NaN and infinity by default. If your code doesn't handle these, use `.allow_nan(false)` and/or `.allow_infinity(false)` — but consider whether the code *should* handle them first.
 
@@ -616,7 +620,7 @@ let k_squared = k * k;  // can't overflow i32
 
 6. **Excessive assume/filter rejections fail the test.** If `tc.assume()` or `.filter()` rejects too many inputs, Hegel gives up. Restructure your generators to produce valid inputs directly.
 
-7. **`note()` only prints on the final replay.** Don't rely on `tc.note()` for progress logging — it only appears when displaying the minimal counterexample.
+7. **`note()` only prints on the final replay.** Don't rely on `tc.note()` for progress logging — at the default verbosity it only appears when displaying the minimal counterexample.
 
 8. **Default collection sizes are small.** `generators::vecs(gen)` with no bounds rarely produces 100+ elements. If you need large collections (e.g., to test tree traversal at depth), draw the size separately:
    ```rust
@@ -624,10 +628,10 @@ let k_squared = k * k;  // can't overflow i32
    let keys: Vec<i32> = tc.draw(generators::vecs(generators::integers()).min_size(n));
    ```
 
-9. **Use `.unique()` for map/set key generation.** When testing ordered maps or sets, generate unique keys to avoid ambiguity about which value wins:
+9. **Use `.unique(true)` for map/set key generation.** When testing ordered maps or sets, generate unique keys to avoid ambiguity about which value wins:
    ```rust
    let keys: Vec<i32> = tc.draw(generators::vecs(generators::integers::<i32>())
-       .max_size(50).unique());
+       .max_size(50).unique(true));
    ```
 
 ## Stateful Testing
@@ -684,15 +688,15 @@ fn test_integer_stack(tc: TestCase) {
 - **`#[invariant]`** methods are checked after every successful rule. They take `&self` and `TestCase`.
 - Call `hegel::stateful::run(machine, tc)` from a `#[hegel::test]` to execute.
 
-### Variables (Pools)
+### Pools
 
-For tests that need to track dynamically created resources (accounts, handles, keys), use `Variables`:
+For tests that need to track dynamically created resources (accounts, handles, keys), use `Pool`:
 
 ```rust
-use hegel::stateful::{Variables, variables};
+use hegel::stateful::{Pool, pool};
 
 struct MyTest {
-    accounts: Variables<String>,
+    accounts: Pool<String>,
     // ... other state
 }
 
@@ -706,13 +710,13 @@ impl MyTest {
 
     #[rule]
     fn use_account(&mut self, tc: TestCase) {
-        let account = self.accounts.draw().clone();  // borrows from pool
+        let account = tc.draw(self.accounts.values_reusable()).clone();  // borrows from pool
         // ... do something with account
     }
 
     #[rule]
     fn delete_account(&mut self, tc: TestCase) {
-        let account = self.accounts.consume();  // removes from pool
+        let account = tc.draw(self.accounts.values_consumed());  // removes from pool
         // ... clean up account
     }
 }
@@ -720,14 +724,16 @@ impl MyTest {
 #[hegel::test]
 fn test_my_system(tc: TestCase) {
     let test = MyTest {
-        accounts: variables(&tc),
+        accounts: pool(&tc),
     };
     hegel::stateful::run(test, tc);
 }
 ```
 
-`Variables<T>` methods:
+`Pool<T>` methods:
 - `.add(value)` — Add a value to the pool
-- `.draw()` — Borrow a random value (calls `assume(false)` if empty)
-- `.consume()` — Remove and return a random value (calls `assume(false)` if empty)
-- `.empty()` — Check if the pool is empty
+- `.values_reusable()` — Generator over `&T`; drawing borrows a random value without removing it (rejects the test case, as if by `assume(false)`, if empty)
+- `.values_consumed()` — Generator over `T`; drawing removes and returns a random value (rejects if empty)
+- `.is_empty()` / `.len()` — Inspect the pool
+
+Both are drawn through `tc.draw()`, so the chosen value appears in the failing-test replay and shrinks like any other draw.
