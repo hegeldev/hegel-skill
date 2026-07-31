@@ -11,7 +11,6 @@
 - [Composite Generators](#composite-generators) — `hegel.Composite`
 - [Stateful Testing](#stateful-testing) — `hegel.RunStateful`, rules, invariants
 - [Workloads](#workloads) — `hegel.Workload` for standalone CLI binaries
-- [Project Configuration](#project-configuration)
 - [Go-Specific Examples](#go-specific-examples) — Dependent generation, wrapping arithmetic
 - [Gotchas](#gotchas)
 
@@ -24,8 +23,6 @@ go get hegel.dev/go/hegel@latest
 ```
 
 Run tests with `go test`. Hegel tests integrate directly with the standard Go test runner via `hegel.Test(t, ...)`.
-
-If something goes wrong with server installation, see https://hegel.dev/reference/installation.
 
 ## Test Structure
 
@@ -64,14 +61,19 @@ func TestWithConfig(t *testing.T) {
 
 Options:
 - `hegel.WithTestCases(n int)` — Number of test cases (default: 100)
-- `hegel.SuppressHealthCheck(checks ...hegel.HealthCheck)` — Suppress specific health checks
-- `hegel.WithDatabase(db hegel.DatabaseSetting)` — Configure example-database persistence (see below)
+- `hegel.SuppressHealthCheck(checks ...hegel.HealthCheck)` — Suppress specific health checks. Calls don't accumulate — the last call wins, so pass every check to suppress in a single call
+- `hegel.WithDatabase(path string)` — Persist failing examples to `path`; an empty path disables persistence (see below)
 - `hegel.WithDerandomize(b bool)` — Use a fixed seed for reproducible runs (default: `true` in CI)
 - `hegel.WithSeed(seed int64)` — Pin a specific seed for reproducible runs
+- `hegel.WithSingleTestCase()` — Run exactly one test case with no shrinking, replay, or example database. For long-running workloads or test bodies that aren't safely re-runnable on the same inputs
+- `hegel.WithBackend(b hegel.Backend)` — Randomness backend: `BackendAuto` (default), `BackendDefault` (seeded PRNG), `BackendURandom` (fresh entropy every draw, for Antithesis)
+- `hegel.WithVerbosity(v hegel.Verbosity)` — Engine logging: `VerbosityQuiet`, `VerbosityNormal` (default), `VerbosityVerbose`, `VerbosityDebug`
+- `hegel.WithReportMultipleFailures(b bool)` — Report every distinct counterexample rather than stopping at the first
+- `hegel.WithPhases(phases ...hegel.Phase)` — Restrict the run to specific phases: `PhaseExplicit`, `PhaseReuse`, `PhaseGenerate`, `PhaseTarget`, `PhaseShrink` (`hegel.AllPhases()` returns them all)
 
 ### HealthCheck
 
-`HealthCheck` variants (the wire-protocol name in parentheses is what you'll see in failure messages):
+`HealthCheck` variants (the name in parentheses is what you'll see in failure messages):
 - `hegel.FilterTooMuch` (`filter_too_much`) — Too many test cases rejected via `Assume()`
 - `hegel.TooSlow` (`too_slow`) — Test execution is too slow
 - `hegel.TestCasesTooLarge` (`test_cases_too_large`) — Generated test cases are too large
@@ -91,18 +93,18 @@ hegel.Test(t, func(ht *hegel.T) {
 
 ### Example database
 
-By default, hegel persists failing examples to a `.hegel/` directory in your project root and replays them on subsequent runs. In CI environments the database is automatically disabled.
+By default, hegel persists failing examples to a `.hegel/` directory relative to the working directory (under `go test`, the package directory) and replays them on subsequent runs. In CI environments the database is automatically disabled.
 
-To override the location or disable it explicitly, use `WithDatabase`:
+To override the location or disable it explicitly, use `WithDatabase` (it takes a plain path string):
 
 ```go
 // Persist failing examples to a custom directory
 hegel.Test(t, func(ht *hegel.T) { /* ... */ },
-    hegel.WithDatabase(hegel.Database("my_hegel_database")))
+    hegel.WithDatabase("my_hegel_database"))
 
-// Disable example persistence entirely
+// Disable example persistence entirely (empty path)
 hegel.Test(t, func(ht *hegel.T) { /* ... */ },
-    hegel.WithDatabase(hegel.DatabaseDisabled()))
+    hegel.WithDatabase(""))
 ```
 
 ## T vs TestCase
@@ -494,6 +496,7 @@ Notes:
 - Pass a **pointer** to your machine to `RunStateful` so rules can mutate it.
 - Inside a rule, call `tc.Assume(false)` to skip when the rule doesn't apply — hegel will try a different rule.
 - `RunStateful` panics if the machine has no `Rule*` methods or if any `Rule*`/`Invariant*` method has the wrong signature.
+- Rule selection uses swarm testing: each test case enables a random subset of the rules and draws only from that subset (the restriction shrinks away in minimal counterexamples). This surfaces bugs that only appear under particular combinations of rules.
 
 **Shared external state.** If the machine wraps something you can't cheaply re-create per test case (a database, a temp directory, a long-lived network connection), keep that resource hoisted outside the test body and reset/clean it inside the body before calling `RunStateful`. Otherwise — for in-memory models, which is the common case — just allocate fresh.
 
@@ -501,7 +504,7 @@ For models that need to track dynamically created resources (handles, IDs, accou
 
 ## Workloads
 
-`hegel.Workload` runs a property test as a standalone CLI binary — useful for soak tests, fuzzing harnesses, or long-running workloads outside of `go test`. It parses standard hegel flags (`-test-cases`, `-seed`, `-verbosity`, etc.) and exits non-zero on failure.
+`hegel.Workload` runs a property test as a standalone CLI binary — useful for soak tests, fuzzing harnesses, or long-running workloads outside of `go test`. It parses standard hegel flags (`--test-cases`, `--derandomize`, `--database`, `--suppress-health-check`, `--single-test-case`) and exits non-zero on failure. Unlike `hegel.Test`, it runs an unbounded number of test cases by default — bound it with `WithTestCases` or `--test-cases`.
 
 ```go
 package main
@@ -517,19 +520,6 @@ func main() {
 ```
 
 `Workload` takes the same `Option` values as `hegel.Test` (e.g. `hegel.WithTestCases(...)`). CLI flags override `Option` values, which override defaults.
-
-## Project Configuration
-
-### `hegel.SetHegelDirectory`
-
-Override the automatically detected `.hegel` data directory. Hegel walks up from the working directory looking for `go.mod`, `.git`, `go.sum`, `Makefile`, or `justfile`/`Justfile` to identify the project root. Call `SetHegelDirectory` before any hegel tests run (e.g. in `TestMain`) when auto-detection isn't suitable:
-
-```go
-func TestMain(m *testing.M) {
-    hegel.SetHegelDirectory("/path/to/project/.hegel")
-    os.Exit(m.Run())
-}
-```
 
 ## Go-Specific Examples
 
@@ -601,6 +591,6 @@ Distinguish "this constraint protects the library's contract" (keep it) from "th
     items := hegel.Draw(ht, hegel.Lists(hegel.Integers(math.MinInt, math.MaxInt)).MinSize(n))
     ```
 
-14. **Add `.hegel/` to `.gitignore`.** Hegel creates a `.hegel/` directory at your project root for caching the server binary, the example database, and per-process server logs.
+14. **Add `.hegel/` to `.gitignore`.** Hegel creates a `.hegel/` directory (relative to the working directory — the package directory under `go test`) holding the example database of failing test cases.
 
-15. **In CI, the example database is disabled by default.** Hegel detects common CI environment variables (`CI`, `GITHUB_ACTIONS`, `BUILDKITE`, etc.) and skips persistence. Override this with `hegel.WithDatabase(hegel.Database("..."))` if you want CI runs to share a database.
+15. **In CI, the example database is disabled by default.** Hegel detects common CI environment variables (`CI`, `GITHUB_ACTIONS`, `BUILDKITE`, etc.) and skips persistence. Override this with `hegel.WithDatabase("...")` if you want CI runs to share a database.

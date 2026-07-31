@@ -1,19 +1,20 @@
 ---
 name: hegel
 description: >
-  Write property-based tests using Hegel across Rust, Go, C++, and TypeScript
-  projects. Use this skill whenever the user asks to write tests, add test
-  coverage, or improve testing for functions, modules, or libraries — especially
-  when the code has properties like round-trips, invariants, or contracts that
-  hold across many inputs. Also triggers on: "property-based tests", "PBT",
-  "hegel", "fuzz", "generative tests", "randomized testing", "test with random
-  inputs", "shrinking", or when existing tests use proptest, quickcheck, rapid,
-  gopter, rapidcheck, or fast-check.
+  Write property-based tests using Hegel across Rust, Go, C++, TypeScript,
+  Java, and OCaml projects. Use this skill whenever the user asks to write
+  tests, add test coverage, or improve testing for functions, modules, or
+  libraries — especially when the code has properties like round-trips,
+  invariants, or contracts that hold across many inputs. Also triggers on:
+  "property-based tests", "PBT", "hegel", "fuzz", "generative tests",
+  "randomized testing", "test with random inputs", "shrinking", or when
+  existing tests use proptest, quickcheck, rapid, gopter, rapidcheck,
+  fast-check, jqwik, junit-quickcheck, qcheck, or crowbar.
 ---
 
 # Hegel: Property-Based Testing
 
-Hegel is a family of property-based testing libraries supporting multiple languages, powered by Hypothesis. Tests integrate with standard language test runners. Hegel generates random inputs for your code and automatically shrinks failing cases to minimal counterexamples.
+Hegel is a family of property-based testing libraries supporting multiple languages, powered by a shared native engine based on Hypothesis. Everything runs in-process, and tests integrate with standard language test runners. Hegel generates random inputs for your code and automatically shrinks failing cases to minimal counterexamples.
 
 Even when PBTs add modest line coverage over unit tests, their value is in exercising combinations and boundary conditions that humans don't think to write by hand.
 
@@ -57,7 +58,7 @@ Before writing tests from scratch, check what already exists.
 **Existing PBTs in another framework** (proptest, quickcheck, rapid, gopter, etc.) should be ported to hegel. Load the language-specific porting reference (`references/<language>/porting.md`). Key things to know about hegel when porting:
 
 - **Hegel is imperative.** Most PBT libraries declare what to generate in a function signature or strategy combinator. In hegel, your test receives a test case handle and calls `tc.draw()` whenever it needs a value — you can draw conditionally, in loops, and have later draws depend on earlier values without needing `flat_map`.
-- **Shrinking is automatic.** Hegel's shrinking is handled server-side by Hypothesis. You don't implement shrink logic or define shrinking strategies.
+- **Shrinking is automatic.** Hegel's engine handles shrinking. You don't implement shrink logic or define shrinking strategies.
 - **Standard assertions.** Use the language's normal assertion mechanism. No special `prop_assert!` or return-a-bool pattern needed.
 - **Broaden your generators.** Many existing PBTs use narrow input ranges because shrinking was slow or unreliable. Hegel's shrinking is more robust — try broader generators than the originals.
 

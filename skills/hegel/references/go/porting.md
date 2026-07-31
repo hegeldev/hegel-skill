@@ -5,7 +5,6 @@
 rapid is the most popular Go PBT library. The main differences:
 
 - rapid uses `t.Draw()` as a method on its test context; hegel uses `hegel.Draw(ht, gen)` as a free function.
-- rapid does shrinking in-process; hegel delegates to a server.
 - rapid's `rapid.Check` takes a `func(*rapid.T)`; hegel's `hegel.Test` takes a `*testing.T` and a `func(*hegel.T)`.
 
 ### Test Structure

@@ -45,12 +45,19 @@ Generators for [`chrono`](https://docs.rs/chrono):
 | `chrono_gs::weekday_sets()` | `chrono::WeekdaySet` |
 | `chrono_gs::datetimes()` | `chrono::DateTime<FixedOffset>` |
 
+All of these take inclusive `.min_value(..)`/`.max_value(..)` bounds, except `weekday_sets()` (no builders) and `naive_weeks()` (`.min_date(..)`/`.max_date(..)`, plus `.weekday_starts(gen)` for the week's start day). `datetimes()` bounds are wall-clock `NaiveDateTime`s, and its `.timezones(gen)` swaps the timezone generator (e.g. `gs::just(Utc)` for `DateTime<Utc>`). `naive_dates()` shrinks toward 2000-01-01 (clamped into the bounds).
+
+Common chrono types (`NaiveDate`, `NaiveTime`, `NaiveDateTime`, `TimeDelta`, `FixedOffset`, `Weekday`, `Month`, `WeekdaySet`, `DateTime<Utc>`, `DateTime<FixedOffset>`, ...) implement `DefaultGenerator`, so `gs::default::<chrono::NaiveDate>()` works.
+
 ```rust
+use chrono::NaiveDate;
 use hegel::extras::chrono as chrono_gs;
 
 #[hegel::test]
 fn my_test(tc: hegel::TestCase) {
     let d: chrono::NaiveDate = tc.draw(chrono_gs::naive_dates());
+    let min = NaiveDate::from_ymd_opt(2024, 1, 1).unwrap();
+    let bounded = tc.draw(chrono_gs::naive_dates().min_value(min));
     // ...
 }
 ```
@@ -70,12 +77,18 @@ Generators for [`jiff`](https://docs.rs/jiff):
 | `jiff_gs::offsets()` | `jiff::tz::Offset` |
 | `jiff_gs::zoneds()` | `jiff::Zoned` |
 
+All take `.min_value(..)`/`.max_value(..)` bounds (inclusive, in the generated type), except `spans()` (`.min_nanoseconds(..)`/`.max_nanoseconds(..)`) and `zoneds()` (`.timestamps(gen)`/`.timezones(gen)` to replace its component generators). `dates()` defaults to years 1–9999; bounds can widen it down to jiff's minimum of `-9999-01-01`. `times()` generates whole-microsecond values (`subsec_nanosecond()` is always a multiple of 1000); sub-microsecond bounds are rounded inward.
+
+The jiff types (`Date`, `Time`, `DateTime`, `Timestamp`, `Span`, `SignedDuration`, `Offset`, `TimeZone`, `Zoned`, ...) implement `DefaultGenerator`, so `gs::default::<jiff::civil::Date>()` works.
+
 ```rust
 use hegel::extras::jiff as jiff_gs;
+use jiff::civil::Date;
 
 #[hegel::test]
 fn my_test(tc: hegel::TestCase) {
     let z: jiff::Zoned = tc.draw(jiff_gs::zoneds());
+    let d = tc.draw(jiff_gs::dates().min_value(Date::constant(2024, 1, 1)));
     // ...
 }
 ```
@@ -90,7 +103,7 @@ Generators for [`serde_json`](https://docs.rs/serde_json):
 | `json_gs::values()` | `serde_json::Value` (arbitrary JSON values, recursive) |
 | `json_gs::raw_values()` | `Box<serde_json::value::RawValue>` (requires extra feature `serde_json_raw_value`) |
 
-The integration also implements `DefaultGenerator` for `serde_json::Number`, `serde_json::Value`, and `serde_json::Map<String, Value>`, so `gs::default::<serde_json::Value>()` works directly.
+The integration also implements `DefaultGenerator` for `serde_json::Number`, `serde_json::Value`, `serde_json::Map<String, Value>`, and (with `serde_json_raw_value`) `Box<serde_json::value::RawValue>`, so `gs::default::<serde_json::Value>()` works directly.
 
 Particularly useful for testing serializers, parsers, and any code that round-trips through JSON:
 
@@ -120,10 +133,10 @@ let mut rng = tc.draw(rand_gs::randoms());
 let mut rng = tc.draw(rand_gs::randoms().use_true_random(true));
 ```
 
-The returned `HegelRandom` implements `rand::RngCore` (rand 0.9).
+The returned `HegelRandom` implements rand's core trait (as of rand 0.10: `TryRng` with an infallible error, which blanket-implements `Rng` — the trait formerly named `RngCore`). Import `rand::RngExt` for the usual methods (`random()`, `random_range(..)`, ...).
 
 **Default mode** routes every `next_u32`/`next_u64`/`fill_bytes` call through hegel, so the shrinker can minimize individual random decisions. Best for most code.
 
 **`use_true_random()` mode** generates a single seed via hegel then creates a real `StdRng`. Use this when the code under test does rejection sampling or other algorithms that need statistically random-looking output — artificial randomness can cause these to loop indefinitely.
 
-**Rand version compatibility:** hegel uses rand 0.9. If the project uses rand 0.8, the traits are incompatible. Ask the user to upgrade rand (main changes: `gen_range` -> `random_range`, `gen::<T>()` -> `random::<T>()`, `thread_rng()` -> `rng()`, `from_entropy` -> `from_os_rng`). Do not fall back to `ChaCha8Rng::seed_from_u64(hegel_seed)` — that defeats shrinking.
+**Rand version compatibility:** hegel tracks the current rand release (check `rand` in hegeltest's dependencies for the exact version). If the project uses an older rand, the traits are incompatible. Ask the user to upgrade rand. Main changes 0.8 -> 0.9: `gen_range` -> `random_range`, `gen::<T>()` -> `random::<T>()`, `thread_rng()` -> `rng()`. Main changes 0.9 -> 0.10: trait `RngCore` -> `Rng`, trait `Rng` -> `RngExt`, `OsRng` -> `SysRng`, and `SeedableRng::from_os_rng` is removed (use `rand::make_rng()`). Do not fall back to `ChaCha8Rng::seed_from_u64(hegel_seed)` — that defeats shrinking.

@@ -14,6 +14,8 @@ Supported hegel libraries:
 * [hegel-go](https://github.com/hegeldev/hegel-go)
 * [hegel-cpp](https://github.com/hegeldev/hegel-cpp)
 * [hegel-typescript](https://github.com/hegeldev/hegel-typescript)
+* [hegel-java](https://github.com/hegeldev/hegel-java)
+* [hegel-ocaml](https://github.com/hegeldev/hegel-ocaml)
 
 ## Installation
 
