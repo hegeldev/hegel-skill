@@ -363,17 +363,17 @@ The `*_strings()` date/time generators are not configurable; for typed, boundabl
 
 ### Characters and Codepoints
 
-There is no dedicated `char` generator. The idiom is drawing a codepoint and converting, with `one_of!` to weight interesting planes:
+If a property lives on specific characters (line breaks, controls, combining marks), don't hope `text()` happens to produce them — constrain the generator. `text()` and `generators::characters()` take the character-constraint methods listed under String Generators (`.min_codepoint`/`.max_codepoint`, `.categories(...)`, `.include_characters(...)`, ...); use `one_of!` to weight interesting planes explicitly:
 
 ```rust
 let c: char = tc.draw(hegel::one_of!(
-    generators::integers::<u32>().max_value(0x7F),                        // ASCII
-    generators::integers::<u32>().min_value(0x80).max_value(0xFFFF),      // BMP
-    generators::integers::<u32>().min_value(0x1_0000).max_value(0x10_FFFF), // supplementary
-).map(|n| char::from_u32(n).unwrap_or('\u{FFFD}')));
+    generators::characters().max_codepoint(0x7F),                          // ASCII
+    generators::characters().min_codepoint(0x80).max_codepoint(0xFFFF),    // BMP
+    generators::characters().min_codepoint(0x1_0000),                      // supplementary
+));
 ```
 
-`generators::text()`'s character distribution is not documented/configurable — if a property lives on specific characters (line breaks, controls, combining marks), build the string from drawn codepoints or mix `text()` with targeted insertions rather than hoping `text()` produces them.
+For strings, either build from drawn `characters()` or mix `text()` with targeted insertions of the characters the property cares about.
 
 ### Regex Generator
 
@@ -725,7 +725,7 @@ When comparing floats with a magnitude-scaled tolerance, two failure modes bite 
 - **Underflow to zero.** An `eps * magnitude` *absolute* tolerance underflows to `0.0` for subnormal-scale inputs, so a legitimate 1-denormal-ULP residual reads as a failure. Floor the tolerance at `f64::MIN_POSITIVE`. Relatedly, a purely *relative* tolerance is unsound when subnormal intermediates appear — include an absolute term.
 - **The test's own oracle overflows first.** A `hypot`/sum-of-squares/product you compute to *check* the result can overflow to `inf`/`NaN` before the library misbehaves. Use a max-norm (or otherwise overflow-safe) formulation in the test, and suspect the test's arithmetic before reporting a boundary "bug".
 - **The floor may come from library constants, not ULPs.** A crate that ships lower-precision baked constants (e.g. 7-significant-digit color-conversion matrices) has a precision floor set by *those constants*, not by `f64::EPSILON` — a correct roundtrip can be off by ~1e-7. Read the constants to set the tolerance rather than deriving it from ulp arithmetic.
-- **For iterative numerics, the source's stop criterion IS the accuracy contract.** A function computed by Newton iteration, a series, or a root-find (many `inverse_cdf`/special-function implementations) is only as accurate as its own convergence test — e.g. a `while |Δ| > 1e-9` loop cannot deliver a relative-accurate answer deep in a tail. Read the stop criterion in the implementation and set your tolerance from *it*, not from the theoretical precision; a disagreement tighter than the code's own criterion is expected behavior, not a bug (a disagreement much *looser* than it — 138 orders off — is a real iteration-exhaustion bug).
+- **For iterative numerics, the source's stop criterion IS the accuracy contract.** A function computed by Newton iteration, a series, or a root-find (many `inverse_cdf`/special-function implementations) is only as accurate as its own convergence test — e.g. a `while |Δ| > 1e-9` loop cannot deliver a relative-accurate answer deep in a tail. Read the stop criterion in the implementation and set your tolerance from *it*, not from the theoretical precision; a disagreement tighter than the code's own criterion is expected behavior, not a bug (a disagreement many orders of magnitude *looser* than it is a real iteration-exhaustion bug).
 - **A library norm/helper used to *scale* your tolerance can itself underflow.** If you compute `tol = eps * matrix.norm()` (or any library aggregate) to size a comparison, that helper can underflow to 0 on subnormal-scale inputs — collapsing your tolerance to 0 and turning a correct result into a false counterexample. Compute the tolerance scale with an underflow-safe expression (e.g. `max|aᵢⱼ| · √(rows·cols)` instead of the L2 norm) rather than trusting the library's own norm at the extremes.
 - **When pinning a hang/non-termination zone, exclude it with decades-wide margins.** If a property must skip a region because the code hangs or blows up there (e.g. an iterative routine that diverges past some parameter magnitude), the shrinker will walk a naive boundary exclusion right up to the edge and re-trigger the hang. Exclude generously (orders of magnitude inside the safe region) and pin the hang itself with a separate `#[ignore]`d reproducer.
 
@@ -766,7 +766,7 @@ let k_squared = k * k;  // can't overflow i32
 
 2. **`#[hegel::test]` replaces `#[test]`, not both.** Don't write `#[test] #[hegel::test]` — the hegel macro already generates the test attribute.
 
-3. **Add `.hegel/` to `.gitignore`.** Hegel stores its database of previous failures in `.hegel/examples` by default, created on the first recorded failure — don’t be surprised if it doesn’t appear until a test fails. Add `.hegel/` to `.gitignore` up front.
+3. **Add `.hegel/` to `.gitignore`.** Hegel stores its database of previous failures in `.hegel/examples` by default, created on the first recorded failure — don't be surprised if it doesn't appear until a test fails. Add `.hegel/` to `.gitignore` up front.
 
 4. **Float defaults include NaN and infinity.** `generators::floats::<f64>()` with no bounds generates NaN and infinity by default. If your code doesn't handle these, use `.allow_nan(false)` and/or `.allow_infinity(false)` — but consider whether the code *should* handle them first.
 
@@ -795,7 +795,7 @@ let k_squared = k * k;  // can't overflow i32
 
 12. **Adding tests to existing test files can collide with existing names.** Two recurring cases: E0255 when a test-function name matches an existing one (alias your imports or rename), and E0659 ambiguous `assert_eq!` when the surrounding file glob-imports `pretty_assertions` (add `use pretty_assertions::assert_eq;` inside your new module, or use fully-qualified `core::assert_eq!`).
 
-13. **Lint-strict crates may need `#[allow(...)]` on hegel tests.** `#[hegel::test]`'s generated code can trip a crate's own strict lints (`disallowed_methods`, `doc_markdown`, `clippy::pedantic`); add the needed `#[allow(...)]` to the test module rather than assuming your test is wrong.
+13. **Lint-strict crates may need `#[allow(...)]` on hegel tests.** `#[hegel::test]`'s generated code can trip a crate's own strict lints (`disallowed_methods`, `doc_markdown`, `clippy::pedantic`); add the needed `#[allow(...)]` to the test module rather than assuming your test is wrong. Relatedly, when a no-panic property discards a result, lint-strict crates may reject `let _ = ...` (`let_underscore_drop`) — use `drop(...)` there, except for `Copy` results where `drop` trips `dropping_copy_types` and `let _ =` is right; pick per the type.
 
 14. **There is no global case-count override** (no equivalent of `PROPTEST_CASES`). To run the exploratory 10x pass, temporarily edit `test_cases` in the attributes (or add `Settings` positionally), then revert.
 
