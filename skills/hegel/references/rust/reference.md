@@ -419,11 +419,11 @@ All branches must return the same type.
 
 ### `#[hegel::composite]`
 
-Define a reusable generator as a function. The first parameter must be `TestCase`; additional parameters become arguments to the generator. The function must have an explicit return type.
+Define a reusable generator as a function. The first parameter must be `&TestCase`; additional parameters become arguments to the generator. The function must have an explicit return type.
 
 ```rust
 #[hegel::composite]
-fn points(tc: hegel::TestCase, max_coord: f64) -> (f64, f64) {
+fn points(tc: &hegel::TestCase, max_coord: f64) -> (f64, f64) {
     let x = tc.draw(generators::floats::<f64>().min_value(-max_coord).max_value(max_coord));
     let y = tc.draw(generators::floats::<f64>().min_value(-max_coord).max_value(max_coord));
     (x, y)
