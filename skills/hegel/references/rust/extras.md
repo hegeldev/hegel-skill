@@ -95,7 +95,7 @@ fn my_test(tc: hegel::TestCase) {
 }
 ```
 
-Two domain caveats (as of hegeltest 0.28.x): `jiff_gs::spans()` generates single-unit nanosecond spans only (covering roughly ±292 years of Span's ±9999-year multi-unit domain) — for arithmetic properties over calendar units, build spans from drawn per-unit values instead. And the default `zoneds()` time zones don't include IANA zones, so DST transitions are never exercised — draw from `sampled_from` over named zones (e.g. `America/New_York`, `Australia/Lord_Howe`) via `jiff::tz::TimeZone::get` when DST behavior is the property.
+Two domain caveats (as of hegeltest 0.29.x): `jiff_gs::spans()` generates single-unit nanosecond spans only (covering roughly ±292 years of Span's ±9999-year multi-unit domain) — for arithmetic properties over calendar units, build spans from drawn per-unit values instead. And the default `zoneds()` time zones don't include IANA zones, so DST transitions are never exercised — draw from `sampled_from` over named zones (e.g. `America/New_York`, `Australia/Lord_Howe`) via `jiff::tz::TimeZone::get` when DST behavior is the property.
 
 ## `serde_json` (feature `serde_json`)
 

@@ -26,7 +26,9 @@ If the target crate pins a `rust-version` older than hegeltest's MSRV, `cargo ad
 
 **Edition 2015 crates**: `use hegel::...` will not resolve on its own. Add `extern crate hegel;` at the top of the test file (integration tests) or `#[cfg(test)] extern crate hegel;` at the crate root (unit test modules). Everything else, including `#[hegel::test]`, works unchanged on edition 2015.
 
-**`no_std` crates**: `#[hegel::test]`'s generated code assumes the std prelude (it calls `.to_string()` and `format!`), so unit-test modules in `#![no_std]` crates fail with E0599/E0425 pointing at the attribute. Fix: add `use std::{format, string::ToString};` (or `use alloc::{format, string::{String, ToString}};` in `no_std + alloc` crates) to each test module — composites returning `String` need the `String` import too, and `one_of!` expands to the `vec!` macro, so `no_std + alloc` modules using it also need `use alloc::vec;`. In crates that don't declare an `std` dependency at all (core-style `no_std`), `use std::...` itself fails E0433 — put `extern crate std;` inside the test module first. The tests themselves still run under std — this is only about name resolution inside the crate. Related: on edition ≤2018 crates, `panic!`/`assert!` single-argument messages are not format strings — `assert!(cond, "{x:?}")` prints the literal braces; pass format arguments explicitly.
+**`no_std` crates**: `#[hegel::test]`'s generated code assumes the std prelude (it calls `.to_string()` and `format!`), so unit-test modules in `#![no_std]` crates fail with E0599/E0425 pointing at the attribute. Fix: add `use std::{format, string::ToString};` (or `use alloc::{format, string::{String, ToString}};` in `no_std + alloc` crates) to each test module — composites returning `String` need the `String` import too, and `one_of!` expands to the `vec!` macro, so `no_std + alloc` modules using it also need `use alloc::vec;`. In crates that don't declare an `std` dependency at all (core-style `no_std`), `use std::...` itself fails E0433 — put `extern crate std;` inside the test module first. The tests themselves still run under std — this is only about name resolution inside the crate.
+
+**Edition ≤ 2018 crates**: `panic!`/`assert!` single-argument messages are not format strings — `assert!(cond, "{x:?}")` prints the literal braces; pass format arguments explicitly.
 
 If the code under test uses `rand` and you need hegel-controlled RNG instances, enable the `rand` feature:
 
@@ -45,7 +47,7 @@ Note that adding hegeltest substantially inflates the test binary. This is norma
 ### `#[hegel::test]` (preferred)
 
 ```rust
-use hegel::generators::{self, Generator};
+use hegel::generators;
 
 #[hegel::test]
 fn test_addition_commutes(tc: hegel::TestCase) {
@@ -117,6 +119,7 @@ fn test_positional(tc: hegel::TestCase) { /* ... */ }
 
 `Settings` builder methods:
 - `.test_cases(u64)` — Number of test cases (default: 100)
+- `.stateful_step_count(i64)` — Rule steps per stateful test case (default: 50)
 - `.verbosity(Verbosity)` — Output level
 - `.seed(Option<u64>)` — Fixed seed for reproducibility
 - `.derandomize(bool)` — Use deterministic seed from test name (default: `true` in CI)
@@ -134,6 +137,8 @@ fn test_positional(tc: hegel::TestCase) { /* ... */ }
 - `LargeInitialTestCase` — The smallest natural input is very large
 
 In CI environments (detected automatically), the database is disabled and tests are derandomized by default.
+
+Environment overrides (since 0.29.5): `HEGEL_TEST_CASES` sets the case count and `HEGEL_DATABASE` sets the database path (or `disabled`); both take precedence over per-test settings.
 
 ## TestCase Methods
 
@@ -226,6 +231,9 @@ Config methods:
 
 ```rust
 let b: bool = tc.draw(generators::booleans());
+
+// true with the given probability (useful for weighting optional branches)
+let mostly: bool = tc.draw(generators::weighted_booleans(0.9));
 ```
 
 ### Text and Binary Generators
@@ -273,7 +281,7 @@ let suit: &str = tc.draw(generators::sampled_from(
 let encoding: Encoding = tc.draw(generators::sampled_from(all_encodings()));
 ```
 
-Note `just` and `sampled_from` require `T: Send + Sync` (plus `Clone` for `just`). For non-`Send` values (tagged pointers, `Rc`-based types), draw a plain discriminant (`integers`/`sampled_from` over an enum of your own) and construct the value imperatively after the draw.
+Note `just` and `sampled_from` both require `T: Clone + Send + Sync`, and `sampled_from` panics on an empty collection. For non-`Send` values (tagged pointers, `Rc`-based types), draw a plain discriminant (`integers`/`sampled_from` over an enum of your own) and construct the value imperatively after the draw.
 
 ### Collection Generators
 
@@ -363,7 +371,7 @@ The `*_strings()` date/time generators are not configurable; for typed, boundabl
 
 ### Characters and Codepoints
 
-If a property lives on specific characters (line breaks, controls, combining marks), don't hope `text()` happens to produce them — constrain the generator. `text()` and `generators::characters()` take the character-constraint methods listed under String Generators (`.min_codepoint`/`.max_codepoint`, `.categories(...)`, `.include_characters(...)`, ...); use `one_of!` to weight interesting planes explicitly:
+If a property lives on specific characters (line breaks, controls, combining marks), don't hope `text()` happens to produce them — constrain the generator. `text()` and `generators::characters()` take the character-constraint methods listed under Text and Binary Generators (`.min_codepoint`/`.max_codepoint`, `.categories(...)`, `.include_characters(...)`, ...); use `one_of!` to weight interesting planes explicitly:
 
 ```rust
 let c: char = tc.draw(hegel::one_of!(
@@ -458,13 +466,11 @@ All branches must yield the same *value* type; the generator types may differ (b
 
 ### `#[hegel::composite]`
 
-Define a reusable generator as a function. The first parameter must be `TestCase`; additional parameters become arguments to the generator. The function must have an explicit return type.
-
-Note: the macro expands the body into a `Fn` closure, so a non-`Copy` extra parameter (e.g. `Vec<usize>`, `String`) captured across draws hits E0507 ("cannot move out of captured variable in an `Fn` closure"). Bind a `.clone()` of it inside the function before using it, or take it by a `Copy`/reference-friendly form.
+Define a reusable generator as a function. The first parameter must be `&TestCase` (by reference — the macro rejects `tc: TestCase` with a targeted error); additional parameters become arguments to the generator. They are stored on the generator and cloned for each draw, so they must be `Clone`. The function must have an explicit return type.
 
 ```rust
 #[hegel::composite]
-fn points(tc: hegel::TestCase, max_coord: f64) -> (f64, f64) {
+fn points(tc: &hegel::TestCase, max_coord: f64) -> (f64, f64) {
     let x = tc.draw(generators::floats::<f64>().min_value(-max_coord).max_value(max_coord));
     let y = tc.draw(generators::floats::<f64>().min_value(-max_coord).max_value(max_coord));
     (x, y)
@@ -483,7 +489,7 @@ The body must return a plain *value*, drawing from any inner generators with `tc
 
 ```rust
 #[hegel::composite]
-fn small_or_boundary(tc: hegel::TestCase) -> i64 {
+fn small_or_boundary(tc: &hegel::TestCase) -> i64 {
     tc.draw(hegel::one_of!(
         generators::integers::<i64>().min_value(-100).max_value(100),
         generators::sampled_from(vec![i64::MIN, i64::MAX]),
@@ -493,23 +499,18 @@ fn small_or_boundary(tc: hegel::TestCase) -> i64 {
 
 Composites can draw from other composites — `tc.draw(points(100.0))` inside another composite works fine.
 
-**Recursive composites don't compile.** A `#[hegel::composite]` that (directly or mutually) draws from itself fails with an opaque `E0283`-style error about `impl Fn(TestCase) -> T` and `Send` — the opaque return type becomes self-referential. For recursive data (trees, nested documents), write a plain function that takes depth and returns a boxed generator via `compose!`:
+**Recursive composites work** (since hegeltest 0.29.0 — the macro expands to a named generator struct, so a composite can draw from itself). Bound the recursion with an explicit depth parameter so generation terminates, and weight the branch choice toward leaves:
 
 ```rust
-fn toml_values(depth: u32) -> hegel::generators::BoxedGenerator<'static, Value> {
-    hegel::compose!(|tc| {
-        if depth == 0 || tc.draw(generators::integers::<u8>().max_value(3)) > 0 {
-            Value::from(tc.draw(generators::integers::<i64>()))
-        } else {
-            let inner = tc.draw(generators::vecs(toml_values(depth - 1)));
-            Value::from_iter(inner)
-        }
-    })
-    .boxed()
+#[hegel::composite]
+fn nested_values(tc: &hegel::TestCase, depth: u32) -> Value {
+    if depth == 0 || tc.draw(generators::integers::<u8>().max_value(3)) > 0 {
+        Value::from(tc.draw(generators::integers::<i64>()))
+    } else {
+        Value::from_iter(tc.draw(generators::vecs(nested_values(depth - 1))))
+    }
 }
 ```
-
-Two details of that pattern: the return type needs the `'static` lifetime parameter spelled out, and `compose!` takes exactly `|tc| { ... }` — it inserts `move` itself, so writing `compose!(move |tc| ...)` is rejected.
 
 ### `compose!`
 
@@ -527,13 +528,15 @@ let point_gen = compose!(|tc| {
 let (x, y): (f64, f64) = tc.draw(point_gen);
 ```
 
+`compose!` takes exactly `|tc| { ... }` — it inserts `move` itself, so writing `compose!(move |tc| ...)` is rejected — and the closure receives `&TestCase`.
+
 ### `#[derive(DefaultGenerator)]`
 
 Auto-derive a generator for structs you own:
 
 ```rust
 use hegel::DefaultGenerator;
-use hegel::generators::{self, DefaultGenerator as _, Generator};
+use hegel::generators::{self, DefaultGenerator as _};
 
 #[derive(DefaultGenerator, Debug)]
 struct User {
@@ -567,7 +570,7 @@ For types you don't own:
 
 ```rust
 use hegel::derive_generator;
-use hegel::generators::{self, DefaultGenerator, Generator};
+use hegel::generators::{self, DefaultGenerator};
 
 struct Point { x: f64, y: f64 }
 
@@ -646,7 +649,7 @@ fn draw_subset(tc: &hegel::TestCase, n: usize, k: usize) -> Vec<usize> {
 Hegel's imperative style means dependent generation is just sequential code — no `flat_map` needed:
 
 ```rust
-use hegel::generators::{self, Generator};
+use hegel::generators;
 
 #[hegel::test]
 fn test_valid_index(tc: hegel::TestCase) {
@@ -664,7 +667,7 @@ fn test_valid_index(tc: hegel::TestCase) {
 
 ```rust
 use hegel::DefaultGenerator;
-use hegel::generators::{self, DefaultGenerator as _, Generator};
+use hegel::generators::{self, DefaultGenerator as _};
 
 #[derive(DefaultGenerator, Debug, Clone, PartialEq)]
 struct Config {
@@ -688,7 +691,7 @@ fn test_config_merge(tc: hegel::TestCase) {
 This uses the `rand` extra — see `references/rust/extras.md` for the feature flag and the full `randoms()` API (including the artificial-vs-true-random modes).
 
 ```rust
-use hegel::generators::{self, Generator};
+use hegel::generators;
 use hegel::extras::rand as rand_gs;
 
 // Code under test: fn sample(weights: &[f64], rng: &mut impl Rng) -> usize
@@ -735,7 +738,7 @@ There is no built-in bignum generator. For crates built on `num-bigint`, combine
 
 ```rust
 #[hegel::composite]
-fn big_ints(tc: hegel::TestCase) -> BigInt {
+fn big_ints(tc: &hegel::TestCase) -> BigInt {
     tc.draw(hegel::one_of!(
         generators::integers::<i128>().map(BigInt::from),
         generators::from_regex(r"-?[1-9][0-9]{0,59}")
@@ -789,15 +792,15 @@ let k_squared = k * k;  // can't overflow i32
        .max_size(50).unique(true));
    ```
 
-10. **Generators are single-use values.** `tc.draw(gen)` takes the generator by value, so drawing twice from the same variable is a move error. Rebuild the generator per draw (they're cheap), or use a `BoxedGenerator` (`.boxed()`), which implements `Clone`.
+10. **Generators are single-use values.** `tc.draw(gen)` takes the generator by value, so drawing twice from the same variable is a move error. Rebuild the generator per draw (they're cheap), or clone it first — `BoxedGenerator` (`.boxed()`) and composite generators implement `Clone`.
 
-11. **Passing tests print nothing extra.** A passing hegel test looks exactly like a passing unit test; there is no per-case output. To confirm cases are actually being generated, run once with `#[hegel::test(verbosity = hegel::Verbosity::Verbose)]` (the qualified path — bare `Verbosity` is E0433 without an import), or temporarily break the property and check that hegel reports a shrunk counterexample. (A deliberate liveness-check failure leaves an entry in the `.hegel/` failure database — harmless, but delete `.hegel/` afterwards to avoid replaying it. The same applies while iterating on generators: the DB replays counterexamples recorded under the *old* generator, which can look like your new generator producing impossible values — `rm -rf .hegel` when a replayed failure makes no sense.)
+11. **Passing tests print nothing extra.** A passing hegel test looks exactly like a passing unit test; there is no per-case output. To confirm cases are actually being generated, run once with `#[hegel::test(verbosity = hegel::Verbosity::Verbose)]` (the qualified path — bare `Verbosity` is E0433 without an import), or temporarily break the property and check that hegel reports a shrunk counterexample. (A deliberate liveness-check failure leaves an entry in the `.hegel/` failure database — harmless, but delete `.hegel/` once the liveness check is done to avoid replaying it; don't wipe it mid-check, per the main skill. The same applies while iterating on generators: the DB replays counterexamples recorded under the *old* generator, which can look like your new generator producing impossible values — `rm -rf .hegel` when a replayed failure makes no sense.)
 
 12. **Adding tests to existing test files can collide with existing names.** Two recurring cases: E0255 when a test-function name matches an existing one (alias your imports or rename), and E0659 ambiguous `assert_eq!` when the surrounding file glob-imports `pretty_assertions` (add `use pretty_assertions::assert_eq;` inside your new module, or use fully-qualified `core::assert_eq!`).
 
 13. **Lint-strict crates may need `#[allow(...)]` on hegel tests.** `#[hegel::test]`'s generated code can trip a crate's own strict lints (`disallowed_methods`, `doc_markdown`, `clippy::pedantic`); add the needed `#[allow(...)]` to the test module rather than assuming your test is wrong. Relatedly, when a no-panic property discards a result, lint-strict crates may reject `let _ = ...` (`let_underscore_drop`) — use `drop(...)` there, except for `Copy` results where `drop` trips `dropping_copy_types` and `let _ =` is right; pick per the type.
 
-14. **There is no global case-count override** (no equivalent of `PROPTEST_CASES`). To run the exploratory 10x pass, temporarily edit `test_cases` in the attributes (or add `Settings` positionally), then revert.
+14. **Use `HEGEL_TEST_CASES` for the exploratory high-count pass.** `HEGEL_TEST_CASES=1000 cargo test` overrides every test's case count (it takes precedence over per-test settings), so there's no need to edit `test_cases` attributes and revert. `HEGEL_DATABASE` similarly overrides the failure-database path.
 
 ## Stateful Testing
 
@@ -859,7 +862,7 @@ Practical notes:
 - **Subjects that borrow.** If the type under test borrows other state (e.g. an incremental `Encoder<'a>` that mutably borrows its output buffer), it can't be stored in the machine alongside what it borrows. Store *owned inputs* (e.g. the fragments fed so far) in the machine instead, and reconstruct/finalize the borrowing object inside the rule or invariant that checks it.
 - **Compounding rules are slow.** Rules that multiply state size (e.g. `mul` on an arbitrary-precision number, appending to a document every step) make late steps expensive. Prefer moderate `test_cases` for such machines rather than shrinking the generated values.
 - **For incremental/lazily-validated subjects, prefer a check *rule* over an invariant.** Invariants run after every step; if the check itself perturbs the subject (forcing lazy revalidation, warming caches), per-step checking masks exactly the paths you want to test. A drawn `check` rule exercises both checked and unchecked interleavings.
-- **Shrinking can take minutes** — for machines whose rules do I/O, but also for plain tests drawing large collections — this is normal, not a hang. To iterate faster on a known failure, temporarily reduce `test_cases`. `verbosity = Verbosity::Verbose` shows `Step N: <rule>` lines and assumption-skips, which is the way to see what a machine is doing.
+- **Shrinking can take minutes** — for machines whose rules do I/O, but also for plain tests drawing large collections — this is normal, not a hang. To iterate faster on a known failure, temporarily reduce `test_cases`. `verbosity = hegel::Verbosity::Verbose` shows `Step N: <rule>` lines and assumption-skips, which is the way to see what a machine is doing.
 - **Attributes compose.** `#[hegel::test]` works together with extra attributes like `#[cfg_attr(not(feature = "foo"), ignore)]`.
 - **Distinguish slow shrinking from memory blowup.** A model that *materializes elements* (e.g. a `BTreeSet<u64>` mirroring ranges) can be OOM-killed by inputs the subject handles symbolically — a SIGKILL mid-run looks like the slow-shrink hang but needs the opposite fix: bound the model-facing input sizes (documented as protecting the model, per Generator Discipline), don't reduce `test_cases`.
 - **Resource-owning machines and Drop order.** If the machine's fields hold resources with interdependent teardown (e.g. a write transaction and the database it came from), a wrong field order can deadlock in the generated drop — which looks exactly like hegel hanging mid-run. Order fields so dependents drop first, or wrap in `Option` and tear down explicitly in a rule.

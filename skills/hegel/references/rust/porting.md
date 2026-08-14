@@ -27,7 +27,7 @@ proptest! {
 Hegel:
 
 ```rust
-use hegel::generators::{self, Generator};
+use hegel::generators;
 
 #[hegel::test]
 fn test_addition(tc: hegel::TestCase) {
@@ -47,7 +47,7 @@ But consider: should those bounds be there at all? If the property is about addi
 | `any::<i32>()` | `generators::integers::<i32>()` |
 | `0..100i32` | `generators::integers::<i32>().min_value(0).max_value(99)` |
 | `any::<bool>()` | `generators::booleans()` |
-| `any::<f64>()` | `generators::floats::<f64>()` — but note: proptest's `any::<f64>()` excludes NaN by default, hegel's `floats()` includes it. A mechanical port silently broadens the domain and breaks `==`-based roundtrips; decide explicitly whether NaN belongs to the property |
+| `any::<f64>()` | `generators::floats::<f64>()` — but see the float-domain note below |
 | `"[a-z]{1,10}"` | `generators::from_regex(r"[a-z]{1,10}")` |
 | `any::<String>()` | `generators::text()` |
 | `prop::collection::vec(strat, 0..10)` | `generators::vecs(gen).max_size(9)` |
@@ -61,6 +61,8 @@ But consider: should those bounds be there at all? If the property is about addi
 | `strat.prop_flat_map(f)` | `gen.flat_map(f)` |
 | `strat.prop_filter(msg, f)` | `gen.filter(f)` |
 | `strat.boxed()` | `gen.boxed()` |
+
+**Float domains differ.** Proptest's `any::<f64>()` excludes NaN and infinity by default; hegel's unbounded `floats()` includes both. A mechanical port silently broadens the domain and breaks `==`-based roundtrips — decide explicitly whether NaN and infinity belong to the property.
 
 ### Assertions
 
@@ -77,7 +79,7 @@ But consider: should those bounds be there at all? If the property is about addi
 |----------|-------|
 | `ProptestConfig::with_cases(500)` | `#[hegel::test(test_cases = 500)]` |
 | `ProptestConfig { max_shrink_iters: 0, .. }` | `Settings::phases` without `Phase::Shrink` |
-| `PROPTEST_CASES=500` env var | No equivalent |
+| `PROPTEST_CASES=500` env var | `HEGEL_TEST_CASES=500` env var (takes precedence over per-test settings) |
 
 ### Derive
 
@@ -99,7 +101,7 @@ Hegel:
 
 ```rust
 use hegel::DefaultGenerator;
-use hegel::generators::{self, DefaultGenerator as _, Generator};
+use hegel::generators::{self, DefaultGenerator as _};
 
 #[derive(Debug, DefaultGenerator)]
 struct Point { x: f64, y: f64 }
