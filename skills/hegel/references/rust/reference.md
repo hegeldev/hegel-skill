@@ -466,7 +466,7 @@ All branches must yield the same *value* type; the generator types may differ (b
 
 ### `#[hegel::composite]`
 
-Define a reusable generator as a function. The first parameter must be `&TestCase` (by reference — the macro rejects `tc: TestCase` with a targeted error); additional parameters become arguments to the generator. They are stored on the generator and cloned for each draw, so they must be `Clone`. The function must have an explicit return type.
+Define a reusable generator as a function. The first parameter must be `&TestCase`; additional parameters become arguments to the generator. The function must have an explicit return type.
 
 ```rust
 #[hegel::composite]
