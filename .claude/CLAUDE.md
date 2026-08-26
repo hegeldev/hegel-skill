@@ -41,6 +41,7 @@ skills/hegel/
 - **One property per test.** Reinforced throughout; preserve this when adding examples.
 - **Modify existing test files.** The skill explicitly tells agents not to create separate files for PBTs. Keep this consistent.
 - **Tier 1 patterns are ordered by real-world bug-finding rate** (Model > Idempotence > Parse robustness > Roundtrip > Boundary). Don't reorder without a reason.
+- **References must track released library versions.** When a hegel library ships a release, audit the corresponding `references/<lang>/` files against its CHANGELOG — stale API names (renamed generators, changed builder signatures) cause agent compile errors and, in the worst case, agents abandoning hegel entirely. Field testing found exactly this failure mode.
 
 ## Adding a New Language
 

@@ -24,6 +24,8 @@ Even when PBTs add modest line coverage over unit tests, their value is in exerc
 
 Follow these steps when writing property-based tests.
 
+**Before touching a third-party project, check whether its maintainers have opted out of AI contributions.** Look for an anti-AI clause in `CONTRIBUTING.md`/`README`/`LICENSE`, or a dedicated governance file gating AI work (some projects require an explicit acknowledgement step before AI-generated changes). If you find one, **surface it to the user and stop** — do not silently satisfy the acknowledgement requirement, bypass the gate, or upstream anything. Testing a local copy for your own understanding may still be fine, but the decision to proceed and especially to contribute back is the user's to make, not yours to assume.
+
 ### 1. Load the Language Reference
 
 Determine the project language and load the corresponding reference from `references/<language>/reference.md` for API details and idiomatic patterns.
@@ -64,7 +66,7 @@ Before writing tests from scratch, check what already exists.
 
 **Unit tests and example-based tests** can often be evolved into PBTs. Tests with hardcoded seeds, parameterized examples, or multiple similar test cases are prime candidates. Load `references/evolving-tests.md` for detailed guidance on recognizing what property a unit test is hiding. If you can't immediately see the right property, start by parameterizing the test — replace concrete values with generated ones and keep a simple oracle. You can refine the property later.
 
-**Tests that use `rand` with fixed seeds** are especially good candidates — the randomness should come from hegel instead so failures produce shrinkable counterexamples.
+**Tests that use `rand` with fixed seeds** are especially good candidates — the randomness should come from hegel instead so failures produce shrinkable counterexamples. Default to *supplementing* rather than deleting: keep the original seeded test (it pins known-good behavior cheaply) and add the hegel version beside it, unless the original is fully subsumed and the maintainers would clearly prefer one test.
 
 When you evolve an existing test, **modify the existing test file** rather than creating a new one. Property-based tests are tests like any other and belong with the code they're testing. Do not create a separate file for hegel tests.
 
@@ -78,11 +80,28 @@ For each property:
 
 ### 6. Run and Reflect
 
-Run the tests. When a test fails, ask:
+Run the tests. Three checks before trusting a green run:
 
-- **Is this a real bug?** If the code violates its own contract, flag the bug to the user and ask what to do, or fix the code if instructed to do so.
+- **Verify the tests are live.** Passing hegel tests print nothing extra, so temporarily break one property (invert an assertion), confirm hegel reports a shrunk counterexample, and revert. A suite that can't fail is worthless. Note that mutation detection is itself stochastic: a mutation that *should* be caught can survive a single default-count run by bad luck (the triggering input just wasn't drawn), which looks identical to a dead test. If a mutation unexpectedly survives, re-run it (and/or at a higher case count) before concluding the property is vacuous — and don't wipe the `.hegel` failure database between the broken and reverted runs, since its replay is what preserves a lucky-draw counterexample. (In a detected CI environment the failure database is disabled entirely, so there is no replay to preserve — this applies to CI-flagged sandboxes too.)
+- **Check that guarded branches actually fire.** For a property whose interesting work is behind a guard (`if let Some(c) = compose(a,b) { assert … }`, `if parses { check roundtrip }`), the plain liveness check is not enough — the property can pass *vacuously* because the guard never held. Confirm the guarded branch is reached (invert the assertion *inside* the guard and check it still fails, or count how often the branch runs), and if it fires rarely, add a generator that constructs inputs satisfying the guard directly.
+- **Do one exploratory high-count run.** The default case count is tuned for CI, not for discovery — real bugs are regularly invisible at the default but found at 10x (boundary coincidences need the extra trials). Run the suite once with the case count raised ~10x before concluding the code is clean, then drop back to the default for the committed tests. Don't trust wall-clock time to confirm the high-count run actually ran more cases — a fast property finishes near-instantly at both counts, so a run that silently did nothing extra looks identical. Confirm it with a case counter (increment a counter each iteration, print or assert the total) rather than by how long it took.
+
+One more signal worth respecting: if a property is *flaky* — passing some runs and failing others with no code change — don't dismiss it as a bad test. A prime cause is hidden **global or shared mutable state in the code under test** (a process-wide cache, a `static` buffer, a global parser/reader), which order-dependence exposes and which is itself a bug. Investigate the code's statefulness before weakening the property.
+
+When a test fails, ask:
+
+- **Is this a real bug?** If the code violates its own contract, flag the bug to the user and ask what to do, or fix the code if instructed to do so. Weight your confidence by *how* the property fails:
+  - **Oracle-independent failures** — a panic, a crash/abort, a hang, a returned value that violates a self-evident invariant (a duplicate in a set, a CDF outside [0,1], a round-trip that doesn't restore the input you still hold) — are almost always real, because no external judgment is involved.
+  - **Oracle-dependent failures** — a differential disagreement with a hand-written reimplementation or a sibling library — are only as trustworthy as the oracle: in a mature, heavily-fuzzed library a semantic disagreement is more likely a bug in *your* oracle, or a genuinely under-specified corner (empty patterns, degenerate/extreme inputs) the library never promised behavior for, than a real defect. Before pinning an oracle-dependent disagreement in a hardened library, confirm it isn't oracle-independent-reproducible (reduce it to a panic/invariant-violation if you can) and check whether the docs actually promise the behavior you expected — if the contract is silent, report it upstream as a question, not as a confirmed bug.
+  - **Failures that abort or hang the process** (stack overflow, OOM-kill, or an infinite loop — hegel imposes no per-test timeout, so unless the host test runner kills it, a hang looks exactly like slow shrinking): a permanently failing test of this kind would take the whole suite down with it — keep a minimal reproducer marked ignored/skipped with a comment explaining why, and document the bug prominently instead. To tell a genuine hang from slow generation/shrinking, look at the stuck process: 0% CPU with all threads parked (e.g. in `futex_wait`) is a deadlock, whereas steady CPU is just slow work. A deadlock in the code under test is especially insidious when that code runs on a worker pool shared across the whole test process (a global/default thread pool): the wedged tasks occupy workers and stall *unrelated* tests too. Construct the code under test with its own single-threaded pool in the affected tests so one bug can't hang the rest of the suite.
+
+  Once a bug is pinned by one canonical failing test, it is fine to exclude that known-buggy input from *sibling* properties so they stay green and keep testing everything else — add a comment on each exclusion referencing the canonical test.
 - **Is the property unsound?** If you asserted something the code never promised, fix the test.
 - **Is the generator too broad?** Only if the failing input is genuinely outside the function's domain, add constraints. Investigate before constraining.
+
+### If Hegel Itself Won't Work
+
+If you cannot get hegel installed or compiling in the project, **stop and report the blocker with the exact error** — do not fall back to writing example-based tests and presenting them as property-based tests. That silently substitutes a different deliverable, and the blocker is usually one of the documented setup issues (package naming, minimum toolchain versions, old language editions — check the language reference's Setup and Gotchas sections first).
 
 ### When NOT to Write PBTs
 
@@ -140,14 +159,16 @@ twice = normalize(once)
 assert once == twice
 ```
 
-**Parse robustness** — Parsers (`from_str`, `parse`, `decode`) should handle all input without panicking. The property is simple: it should never crash, even on garbage input.
+**Parse robustness** — Parsers (`from_str`, `parse`, `decode`) should handle all input without panicking. The property is simple: it should never crash, even on garbage input. Pair it with the converse **validation/rejection** check: take a *valid* input, apply a mutation that makes it invalid per the grammar (inject a forbidden character, corrupt a length field, add leading zeros where banned), and assert the parser returns an error — no-panic and valid-roundtrip properties both miss parsers that silently accept bad input.
 
 ```pseudocode
 s = tc.draw(text())
-_ = MyType.parse(s)  # should return an error, never panic
+discard(MyType.parse(s))  # should return an error, never panic
 ```
 
-**Roundtrip tests** — `parse(format(x)) == x` for any serialize/deserialize pair. Test with the full input domain. Bugs hide at zero (scientific notation edge cases), large integers (precision loss through f64 for values > 2^53), and unusual string content.
+(Use your language's idiomatic way to explicitly discard the result — `_ =`, `(void)`, `ignore`, `drop(...)` — and expect lint-strict projects to have opinions about which.)
+
+**Roundtrip tests** — `parse(format(x)) == x` for any serialize/deserialize pair. Test with the full input domain. Bugs hide at zero (scientific notation edge cases), large integers (precision loss through f64 for values > 2^53), and unusual string content. Also assert the roundtrip is a **fixpoint**: applying `parse∘format` a second time must not change the value or the serialized string. A roundtrip that drifts on the first pass but stabilizes afterward (e.g. a format that widens `f32`→`f64` on re-parse, so `"33644952.0"` re-serializes to `"33644950.0"`) passes a naive one-shot check but is a real value-corruption bug — the fixpoint form catches it, and it needs no external oracle (you hold the input).
 
 ```pseudocode
 n = tc.draw(integers())
@@ -177,7 +198,24 @@ result = my_numeric_op(a, b)  # should not overflow/panic
 | **Equivalence** | two implementations produce the same result | `iterative_fib(n) == recursive_fib(n)` |
 | **Consistency** | related APIs in the same library agree | `string_width(s) == sum(char_width(c) for c in s)` |
 | **Large input sizes** | exercise deep structure paths that small inputs miss | draw size separately, force 50-200+ elements for trees/tries |
-| **Feature flag testing** | non-default features are often less tested | enable SIMD, nightly, or experimental features and run tests |
+| **Feature flag testing** | non-default features are often less tested | enable SIMD, nightly, or experimental features and run tests; re-run the *finished* suite once per feature/backend combination — a bug on a non-default code path (e.g. a SIMD wrapper missing an empty-input guard the scalar path has) is invisible in the default build at any case count |
+
+### Generate Configurations, Not Just Payloads
+
+When a library exposes a *builder or specification* for its core object — an encoding spec, parser options, layout style, compression level, schema — generate the configuration too, not just payloads for a handful of canned configurations. Running one round-trip property against every predefined configuration mostly re-tests the same code path; generating arbitrary *valid* configurations explores the interactions (padding × wrapping × translation, option × option) where bugs actually live. Build a composite generator that constructs valid configurations directly, encoding the documented validity rules as construction logic rather than filters:
+
+```pseudocode
+composite arbitrary_config(tc):
+    width = tc.draw(sampled_from(valid_widths))
+    symbols = tc.draw(lists(symbol_chars, size=width, unique=true))
+    config = Config(symbols)
+    if tc.draw(booleans()):
+        config.padding = tc.draw(chars_not_in(symbols))
+    ...
+    return config
+```
+
+The library's own fuzz targets (e.g. a `fuzz/` directory in Rust projects) are strong evidence for which object the maintainers consider worth generating — read them.
 
 ### Bug Patterns by Category
 
@@ -193,6 +231,18 @@ result = my_numeric_op(a, b)  # should not overflow/panic
 | **SIMD divergence** | SIMD code path produces different results than the scalar fallback |
 | **Deep structure bugs** | Traversal that only fails when data structure has multiple internal levels (50-200+ elements) |
 
+### Oracle Sourcing
+
+A property is only as good as its oracle — the independent source of truth it checks against. Beyond a hand-written reference implementation, these oracle patterns have repeatedly found real bugs:
+
+- **The library's own dependency tree.** Exact or reference implementations often ship as dependencies (a geometry library on exact predicates, a datetime library on a tz database). They can't be fooled by the same precision/logic error as the code under test.
+- **A dispatcher's generic fallback vs its specialized fast path.** When a library has both a fast specialized routine and a general algorithm for the same query (a cuboid-cuboid distance shortcut and a GJK fallback; an ASCII fast path and a Unicode path), run both and assert they agree — one is usually the oracle for the other. When you *cannot select* which path runs (the library dispatches internally on the input), force the slower/general path with a **semantics-neutral wrapper** on the input — e.g. a regex engine that delegates simple patterns to a faster library can be forced onto its own backtracking VM by prefixing a no-op `(?=[\s\S]?)`; the differential then exercises the path you actually want to test instead of tautologically re-running the delegate.
+- **A sibling API that must agree.** `distance(a,b) == 0` iff `intersects(a,b)`; `find(x).is_some()` iff `contains(x)`; a streaming API vs a one-shot API. But **beware the converse**: a sibling that shares the implementation (or is *defined* in terms of the code under test) can share the bug — a broken convex hull was accepted by the library's own `contains`, which trusted the same broken geometry.
+- **Exhaustive enumeration over a small universe.** For "for all subsets / for all quorums / for all orderings" safety properties, generate the structure over a tiny fixed universe (say 5–7 elements) and check against brute-force enumeration of every subset (a bitmask loop). This turns an un-checkable universal claim into a decidable one (e.g. validating a consensus library's quorum-intersection safety by enumerating all quorum pairs).
+- **The spec, transcribed.** For a wire format with a written spec, transcribe the spec's algorithm (a LEB128 encoder, an RFC length-header rule) as the oracle rather than trusting the library's own encoder as its own reference.
+
+**Audit a floating-point oracle before trusting a tiny disagreement.** If your oracle is itself an external library (a JSON parser, another codec) and it disagrees by ~1 ULP, suspect the *oracle* first — the reference may round differently than the code under test (a JSON library's default float parser vs its opt-in round-trip mode). Confirm the oracle is exact for the domain before reporting a 1-ULP mismatch as a bug.
+
 ### Choosing Properties
 
 Properties must be **evidence-based**. Find evidence in:
@@ -200,6 +250,7 @@ Properties must be **evidence-based**. Find evidence in:
 - **Names and type signatures**: A function `merge(a: List, b: List) -> List` implies the output length might equal the sum of input lengths.
 - **Docstrings and comments**: "Returns a sorted list" directly gives you an invariant.
 - **Assertions and debug checks in the source**: These are properties the author already identified — they may suggest other invariants.
+- **Oracles**: see the Oracle Sourcing section above for where independent sources of truth come from.
 - **Usage patterns**: If callers always assume a result is non-empty, assert that.
 - **Existing tests**: Unit tests often encode specific instances of general properties.
 
@@ -229,6 +280,16 @@ Preemptively adding bounds like `.min(0).max(100)` means you'll never discover t
 ### Edge Cases Are the Point
 
 Don't narrow ranges to "avoid edge cases." If a function claims to work on all integers, test it on all integers — including `MIN`, `MAX`, `0`, `-1`, and `1`. If it breaks, that's valuable information.
+
+**Serializer round-trips: generate at the encode-set boundary.** When a round-trip property involves escaping or percent-encoding, read the writer's encode/escape set and generate characters *just outside* it — bugs live in the characters the writer forgot to escape, and uniform generation almost never lands on the one missing character, even at a high case count.
+
+**Probe recursion depth directly.** For code that consumes recursive input (parsers, interpreters, decoders), a stack overflow or missing depth limit lives at nesting depths of hundreds to thousands — depths uniform random generation almost never reaches. Draw a depth explicitly and build input nested to it (`"(" * n + ")" * n`, deeply nested arrays/objects), sweeping n upward, rather than hoping a recursive generator wanders deep. This class (unbounded recursion aborting the process) recurs across interpreters and parsers of all kinds. It is highest-value against a *checked/validated entry point that makes an explicit safety promise* (a `validate`-style or untrusted-input API that documents protection against malicious input): a stack overflow there is a security-contract violation, not a robustness nit.
+
+**Callback/streaming APIs: cap emitted output.** For an API that streams results through a callback or into an unbounded buffer (a flattener, a shaper, an iterator that materializes), a bug that emits unboundedly OOM-kills the test — an abort, not a shrinkable failure. Cap the emission count in the test harness and assert the cap isn't hit, converting the OOM into a normal falsifiable property.
+
+**Construct degenerate cases exactly, don't boost toward them.** When the interesting input is exactly degenerate (a zero-length segment, coincident points, an all-equal collection), generate it by construction — boosting a broad generator "toward" degeneracy often lands *near* it, and rounding/normalization then de-degenerates it before the code under test sees the exact case.
+
+**Boundary conjunctions need help.** Some bugs require several drawn values to hit boundaries *simultaneously* (e.g. scale is `MIN` *and* the mantissa has trailing zeros). Uniform generation rarely produces such coincidences in a default run. When a property combines multiple drawn values, either boost boundary values explicitly (a `one_of` between the full range and a sample of `MIN`/`MAX`/`0`), or read the code for suspicious arithmetic on the drawn quantities and target the conjunction it implies.
 
 ### Don't Require Non-Empty by Default
 
@@ -320,6 +381,10 @@ If the code under test takes a concrete RNG type rather than a trait/interface, 
 6. **Using manually seeded RNGs** — Use hegel's random generator so hegel controls the random decisions and can shrink them individually. See "Handling Randomness" above.
 
 7. **Overflowing in test code** — When computing values from generated data (e.g., `map.insert(k, k * 10)`), your test code itself can overflow before the library has a chance to be buggy. Use wrapping arithmetic or draw a smaller type and widen it to prevent overflow in the test. Distinguish "this constraint protects the library's contract" (keep it) from "this constraint prevents my test from overflowing" (use wrapping arithmetic instead).
+
+   The same distinction applies to *memory*: an oracle or model that materializes what the library represents lazily (e.g. aligning two numbers whose exponents differ by 2^60) can OOM the test on inputs the library handles fine. Bound such inputs, and say in a comment that the bound protects the test's resources, not the library's contract — ideally keep a separate unbounded no-panic test for the extremes.
+
+   And to *runtime*: when one implementation under test is super-polynomial by design (e.g. an exhaustive search that is exponential in input size), a single large drawn input hangs the whole property — lowering the case count doesn't help because it's one case that's slow, not many. Bound that algorithm's input size specifically (comment that the bound protects the test's runtime, not any contract), and let the polynomial siblings run on larger inputs.
 
 8. **Restricting collection size for performance** — If a test is slow with large collections, lower the test case count rather than restricting the input space. A slow test that finds bugs beats a fast test that can't. Many tree/trie bugs only manifest at 50-200+ elements.
 

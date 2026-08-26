@@ -21,6 +21,8 @@ hegeltest = { version = "...", features = ["chrono", "jiff", "serde_json", "rand
 
 Only enable the features you actually need — there's no benefit to enabling `chrono` if the project uses `jiff`, and vice versa.
 
+**Testing the integrated crate itself (two-instance trap):** the extras generators produce types from *hegel's* dependency on the crate, resolved from crates.io. If the code under test IS that crate (e.g. adding tests inside the jiff repo), those are a different crate instance than the local workspace's — types won't unify. Adding `[patch.crates-io]` pointing at the local path fixes integration tests (which use the external `jiff::` path), but unit-test modules using `crate::` paths still can't use extras at all — hand-roll generators from the crate's own constructors instead.
+
 The idiomatic import for each integration is a module alias:
 
 ```rust
@@ -93,6 +95,8 @@ fn my_test(tc: hegel::TestCase) {
 }
 ```
 
+Two domain caveats (as of hegeltest 0.29.x): `jiff_gs::spans()` generates single-unit nanosecond spans only (covering roughly ±292 years of Span's ±9999-year multi-unit domain) — for arithmetic properties over calendar units, build spans from drawn per-unit values instead. And the default `zoneds()` time zones don't include IANA zones, so DST transitions are never exercised — draw from `sampled_from` over named zones (e.g. `America/New_York`, `Australia/Lord_Howe`) via `jiff::tz::TimeZone::get` when DST behavior is the property.
+
 ## `serde_json` (feature `serde_json`)
 
 Generators for [`serde_json`](https://docs.rs/serde_json):
@@ -139,4 +143,4 @@ The returned `HegelRandom` implements rand's core trait (as of rand 0.10: `TryRn
 
 **`use_true_random()` mode** generates a single seed via hegel then creates a real `StdRng`. Use this when the code under test does rejection sampling or other algorithms that need statistically random-looking output — artificial randomness can cause these to loop indefinitely.
 
-**Rand version compatibility:** hegel tracks the current rand release (check `rand` in hegeltest's dependencies for the exact version). If the project uses an older rand, the traits are incompatible. Ask the user to upgrade rand. Main changes 0.8 -> 0.9: `gen_range` -> `random_range`, `gen::<T>()` -> `random::<T>()`, `thread_rng()` -> `rng()`. Main changes 0.9 -> 0.10: trait `RngCore` -> `Rng`, trait `Rng` -> `RngExt`, `OsRng` -> `SysRng`, and `SeedableRng::from_os_rng` is removed (use `rand::make_rng()`). Do not fall back to `ChaCha8Rng::seed_from_u64(hegel_seed)` — that defeats shrinking.
+**Rand version compatibility:** hegel tracks the current rand release (check `rand` in hegeltest's dependencies for the exact version). Mismatches in *either direction* make the traits incompatible. If the project uses an older rand, ask the user to upgrade. Main changes 0.8 -> 0.9: `gen_range` -> `random_range`, `gen::<T>()` -> `random::<T>()`, `thread_rng()` -> `rng()`. Main changes 0.9 -> 0.10: trait `RngCore` -> `Rng`, trait `Rng` -> `RngExt`, `OsRng` -> `SysRng`, and `SeedableRng::from_os_rng` is removed (use `rand::make_rng()`). If the project instead pins a *newer* rand than hegel's, the extra is unusable — draw the random decisions explicitly with hegel generators instead (e.g. a shuffle as drawn swap indices). Do not fall back to `ChaCha8Rng::seed_from_u64(hegel_seed)` — that defeats shrinking.

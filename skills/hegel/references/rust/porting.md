@@ -27,7 +27,7 @@ proptest! {
 Hegel:
 
 ```rust
-use hegel::generators::{self, Generator};
+use hegel::generators;
 
 #[hegel::test]
 fn test_addition(tc: hegel::TestCase) {
@@ -47,7 +47,7 @@ But consider: should those bounds be there at all? If the property is about addi
 | `any::<i32>()` | `generators::integers::<i32>()` |
 | `0..100i32` | `generators::integers::<i32>().min_value(0).max_value(99)` |
 | `any::<bool>()` | `generators::booleans()` |
-| `any::<f64>()` | `generators::floats::<f64>()` |
+| `any::<f64>()` | `generators::floats::<f64>()` — but see the float-domain note below |
 | `"[a-z]{1,10}"` | `generators::from_regex(r"[a-z]{1,10}")` |
 | `any::<String>()` | `generators::text()` |
 | `prop::collection::vec(strat, 0..10)` | `generators::vecs(gen).max_size(9)` |
@@ -61,6 +61,8 @@ But consider: should those bounds be there at all? If the property is about addi
 | `strat.prop_flat_map(f)` | `gen.flat_map(f)` |
 | `strat.prop_filter(msg, f)` | `gen.filter(f)` |
 | `strat.boxed()` | `gen.boxed()` |
+
+**Float domains differ.** Proptest's `any::<f64>()` excludes NaN and infinity by default; hegel's unbounded `floats()` includes both. A mechanical port silently broadens the domain and breaks `==`-based roundtrips — decide explicitly whether NaN and infinity belong to the property.
 
 ### Assertions
 
@@ -77,7 +79,7 @@ But consider: should those bounds be there at all? If the property is about addi
 |----------|-------|
 | `ProptestConfig::with_cases(500)` | `#[hegel::test(test_cases = 500)]` |
 | `ProptestConfig { max_shrink_iters: 0, .. }` | `Settings::phases` without `Phase::Shrink` |
-| `PROPTEST_CASES=500` env var | No equivalent |
+| `PROPTEST_CASES=500` env var | `HEGEL_TEST_CASES=500` env var (takes precedence over per-test settings) |
 
 ### Derive
 
@@ -99,7 +101,7 @@ Hegel:
 
 ```rust
 use hegel::DefaultGenerator;
-use hegel::generators::{self, DefaultGenerator as _, Generator};
+use hegel::generators::{self, DefaultGenerator as _};
 
 #[derive(Debug, DefaultGenerator)]
 struct Point { x: f64, y: f64 }
@@ -143,6 +145,14 @@ fn test_valid_index(tc: hegel::TestCase) {
 
 This is one of hegel's main ergonomic advantages — dependent generation is just sequential code, no combinator gymnastics needed.
 
+### RNG-based strategies (`prop_perturb`, seeded shuffles)
+
+Proptest strategies built on `prop_perturb` or an RNG (shuffles, weighted choices) have no direct hegel equivalent. Reimplement the randomness as explicit draws: a Fisher-Yates shuffle drawing each swap index via `tc.draw(integers::<usize>().max_value(i))`, weighted choices via a drawn percentage. This keeps every decision shrinkable. Reaching for hegel's `rand` extra is also possible but check versions first — the extra tracks one `rand` version, and the project may pin an older *or newer* one (both mismatch directions produce trait-incompatibility errors; see extras.md).
+
+### Size-biased discards
+
+Quickcheck/proptest generators are size-biased, so `discard`-style guards that "usually pass" there can reject most inputs under hegel's uniform draws and trip the `FilterTooMuch` health check. Convert discard guards into generator bounds or constructive generation when porting.
+
 ## From Quickcheck
 
 Quickcheck is simpler than proptest but more limited.
@@ -180,7 +190,7 @@ Key differences:
 | `Arbitrary for T` (trait impl) | `Generator<T>` (trait impl) or `#[derive(DefaultGenerator)]` |
 | `fn arbitrary(g: &mut Gen) -> Self` | `fn do_draw(&self, tc: &TestCase) -> T` |
 | `fn shrink(&self) -> Box<dyn Iterator>` | Automatic — no shrink implementation needed |
-| `g.size()` for size control | Implicit — the engine controls size distribution |
+| `g.size()` for size control | Implicit — the engine controls size distribution (draw sizes explicitly if you need large values) |
 
 ### Common Patterns
 
@@ -210,11 +220,19 @@ fn test_division(tc: hegel::TestCase) {
 
 When porting tests from proptest or quickcheck:
 
-1. **Remove the old dependency** from `Cargo.toml` (if no other tests use it) and add hegel.
-2. **Replace the test macro/attribute** with `#[hegel::test]`.
-3. **Convert strategies/Arbitrary to `tc.draw()` calls.** Start with the broadest generators — don't carry over narrow bounds from the old framework unless they're justified by the function's contract.
-4. **Replace framework-specific assertions** (`prop_assert!`, bool returns) with standard `assert!`.
-5. **Replace `prop_assume!` / `TestResult::discard()`** with `tc.assume()`.
-6. **Simplify dependent generation.** If the old test used `flat_map` chains just to make later values depend on earlier ones, rewrite as sequential `tc.draw()` calls.
-7. **Remove custom `Shrink` implementations.** Hegel handles shrinking automatically.
-8. **Run the tests.** If they fail on inputs the old framework didn't find, investigate — that's the point.
+1. **Enumerate the existing properties first.** List every property the old suite tests (expand macros mentally — one `macro_rules!` invocation per type is one property per type). Ported coverage must be a superset of the original: map each old test to a hegel test, and explicitly note any property you intentionally drop and why. Do not rewrite the suite from scratch and assume you covered everything. Exception: when a macro instantiates the same property over a large type family (e.g. 20 storage types), porting one or two representative instantiations and saying so beats mechanically porting all of them — the property, not the instantiation count, is the coverage.
+2. **Check how the old suite is wired in before removing anything.** If the existing PBT suite is gated behind a non-default cfg flag or feature (e.g. `#[cfg(property_tests)]`), find out why — often MSRV or dependency weight. Removing the gate or deleting the suite is a behavior change for the maintainer's CI. Prefer adding hegel tests in a location that runs under plain `cargo test`, treating the gated suite as evidence, and leaving it untouched unless the maintainer asks.
+3. **Remove the old dependency** from `Cargo.toml` only if nothing else uses it and you've fully ported its tests; otherwise keep both.
+4. **Replace the test macro/attribute** with `#[hegel::test]`.
+5. **Convert strategies/Arbitrary to `tc.draw()` calls.** Start with the broadest generators — don't carry over narrow bounds from the old framework unless they're justified by the function's contract.
+6. **Replace framework-specific assertions** (`prop_assert!`, bool returns) with standard `assert!`.
+7. **Replace `prop_assume!` / `TestResult::discard()`** with `tc.assume()`.
+8. **Simplify dependent generation.** If the old test used `flat_map` chains just to make later values depend on earlier ones, rewrite as sequential `tc.draw()` calls.
+9. **Remove custom `Shrink` implementations.** Hegel handles shrinking automatically.
+10. **Carry over the original case count.** If the old suite ran a property at an elevated count (proptest's default is 256; suites often configure thousands), don't silently downgrade it to hegel's default 100 — keep the original count on the ported test, or note the reduction.
+11. **Strengthen where the original was weak.** Ports are allowed (encouraged) to assert more than the original: a proptest that only checked "parses without error" can become a full value-equality round-trip. Similarly, when porting a fuzz target of the form "generate arbitrary text, check the property only if it happens to parse", note that hegel's default 100 cases will rarely hit the parse-success branch — pair the port with a construction-based generator that builds valid inputs directly, and keep the arbitrary-text version as a no-panic test.
+12. **Run the tests.** If they fail on inputs the old framework didn't find, investigate — that's the point. One caution: if a test only fails *after you broadened* a ported generator, check whether the original narrow range was protecting a documented limit of the operation (precision, domain, resource bounds) rather than being historical timidity — see "Beware of properties that seem universal but aren't" in the main skill. Investigate before reporting a bug.
+
+## After the Port
+
+If the old framework's dev-dependency (`proptest`, `quickcheck`, a pinned `rand` used only by seeded tests) is no longer referenced once your port lands, remove it from `Cargo.toml` — and say so in your report, since it changes the crate's dependency tree. Conversely, an oracle you introduce may need *features enabled on existing dev-dependencies* (e.g. `time`'s `parsing`); prefer enabling a feature over adding a new dependency.
