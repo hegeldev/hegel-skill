@@ -18,8 +18,6 @@ Hegel generates random inputs for your code and shrinks failing cases to minimal
 
 **API details come from the library, not from this skill.** Before writing your first test, read the hegel library copy available in your environment — vendored or registry source, generated docs, its README and examples — and check the exact name and signature of everything you use. Do not guess syntax.
 
-Before touching a third-party project, check for an anti-AI-contribution clause (`CONTRIBUTING.md`, `README`, `LICENSE`, governance files). If you find one, surface it to the user and stop.
-
 ## The loop
 
 1. Read the code under test. List its risky surfaces: parsers and decoders, arithmetic and boundary logic, construction and configuration parameters, optimized or unsafe paths, stateful APIs, anything with an assert or a documented precondition.
