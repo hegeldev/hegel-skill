@@ -24,8 +24,8 @@ Hegel generates random inputs for your code and shrinks failing cases to minimal
 2. For each surface, state properties grounded in evidence: documented contracts, names and signatures, invariants the code itself asserts, existing tests. Never test behavior nothing promises. Test documented claims exactly as written, and state properties in both directions — what valid input must produce, and what invalid or hostile input must not do (be accepted, crash, hang, corrupt silently).
 3. Write one property per test, in the project's existing test files.
 4. Generate broadly. Every parameter the API exposes is an input to generate, including construction and configuration knobs. Broad includes hostile: empty, control characters, extreme sizes and nesting, invalid shapes alongside valid ones. Never narrow a generator's domain to avoid a failure. Bound resource use where values are materialized (collection sizes, recursion depth), not in the drawn domain.
-5. Run with high case counts — thousands, not the library default.
+5. Run with high case counts — thousands, not the library default. Also probe scale directly, outside the generators: build one very large instance (hundreds of thousands of elements, deeply nested input) and exercise every operation and derived trait on it once — recursion and complexity bugs only appear at scale.
 6. Investigate every failure to root cause. Decide bug-in-code vs bug-in-test from evidence and report it either way. Never silently delete, weaken, or narrow a failing property.
 7. Before stopping, walk the surface list from step 1: each entry has properties, or a stated reason it does not.
 
-Report what you tested, what you found, and what you left untested and why.
+Report what you tested, what you found, and what you left untested and why. Write the report from a fresh run of the full suite, not from memory: every test that fails in that run appears in the report, and any failure seen earlier that is absent from it gets a stated reason.
