@@ -21,9 +21,9 @@ Hegel generates random inputs for your code and shrinks failing cases to minimal
 ## The loop
 
 1. Read the code under test. List its risky surfaces: parsers and decoders, arithmetic and boundary logic, construction and configuration parameters, optimized or unsafe paths, stateful APIs, anything with an assert or a documented precondition.
-2. For each surface, state properties grounded in evidence: documented contracts, names and signatures, invariants the code itself asserts, existing tests. Never test behavior nothing promises.
+2. For each surface, state properties grounded in evidence: documented contracts, names and signatures, invariants the code itself asserts, existing tests. Never test behavior nothing promises. Test documented claims exactly as written, and state properties in both directions — what valid input must produce, and what invalid or hostile input must not do (be accepted, crash, hang, corrupt silently).
 3. Write one property per test, in the project's existing test files.
-4. Generate broadly. Every parameter the API exposes is an input to generate, including construction and configuration knobs. Never narrow a generator's domain to avoid a failure. Bound resource use where values are materialized (collection sizes, recursion depth), not in the drawn domain.
+4. Generate broadly. Every parameter the API exposes is an input to generate, including construction and configuration knobs. Broad includes hostile: empty, control characters, extreme sizes and nesting, invalid shapes alongside valid ones. Never narrow a generator's domain to avoid a failure. Bound resource use where values are materialized (collection sizes, recursion depth), not in the drawn domain.
 5. Run with high case counts — thousands, not the library default.
 6. Investigate every failure to root cause. Decide bug-in-code vs bug-in-test from evidence and report it either way. Never silently delete, weaken, or narrow a failing property.
 7. Before stopping, walk the surface list from step 1: each entry has properties, or a stated reason it does not.
