@@ -16,7 +16,7 @@ description: >
 
 Hegel generates random inputs for your code and shrinks failing cases to minimal counterexamples. Libraries exist for Rust (`hegeltest`), Go, C++, TypeScript, Java, and OCaml, all integrating with the standard test runner.
 
-**API details come from the library, not from this skill.** Before writing your first test, read the hegel library copy available in your environment — vendored or registry source, generated docs, its README and examples — and check the exact name and signature of everything you use. Do not guess syntax.
+**API details come from the library, not from this skill.** Before writing your first test, find the library's actual API: a locally available copy (vendored or registry source, generated docs) if there is one, its published documentation otherwise. Check the exact name and signature of everything you use. Do not guess syntax.
 
 ## The loop
 
