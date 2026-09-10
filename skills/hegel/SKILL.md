@@ -18,7 +18,7 @@ Hegel generates random inputs for your code and shrinks failing cases to minimal
 
 Learn the API from, in order: existing hegel tests in this repo, the library's documentation, and the hegel library source available in your environment (vendored or registry copy). Check the exact name and signature of everything you use. Do not guess syntax.
 
-Ground every property in evidence — documented contracts, names and signatures, invariants the code itself asserts, existing tests. Never test behavior nothing promises. Write one property per test, in the project's existing test files.
+Ground every property in evidence — documented contracts, names and signatures, invariants the code itself asserts, existing tests. An undocumented but ordinary expectation (a round-trip, two equivalent spellings agreeing, a rescaled input giving the same answer) is evidence too: name the expectation, and when such a test fails, judge the failure by whether the behavior is defensible, not by whether anything promised it. Write one property per test, in the project's existing test files.
 
 ## Techniques
 
