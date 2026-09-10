@@ -26,7 +26,7 @@ Short, specific guides in this skill's `techniques/` directory. Load one when yo
 
 - `techniques/surfaces.md` — choosing what to test
 - `techniques/directions.md` — properties in the accept and the reject direction
-- `techniques/generators.md` — generator breadth: every parameter, hostile inputs
+- `techniques/generators.md` — generators: full domains, hostile inputs, targeted subsets
 - `techniques/scale.md` — the scale probe for recursion and complexity bugs
 - `techniques/running.md` — case counts and run configuration
 - `techniques/triage.md` — investigating failures and reporting honestly

@@ -33,7 +33,7 @@ Every line of skill content is benchmark-driven: it exists because a hegel-skill
 
 - **Language-agnostic.** No per-language syntax anywhere; the skill tells agents to read the library's own docs and source instead.
 - **Evidence-based properties.** Properties must be grounded in the code under test (names, signatures, docs, existing tests, usage). Don't add advice that encourages inventing properties.
-- **Don't weaken generator discipline.** "Broad generators find bugs" is load-bearing — edits that add hedges like "consider narrowing ranges for speed" undo the skill's main lesson. Resource bounds belong at materialization, never in the drawn domain.
+- **Don't weaken generator discipline.** Full domains by default is load-bearing — edits that add hedges like "consider narrowing ranges for speed" undo the skill's main lesson. Targeted-subset generators (constructed, not filtered or clamped) are a technique, not a hedge. Resource bounds belong at materialization, never in the drawn domain.
 - **One property per test.** Preserve this when adding examples.
 - **Modify existing test files.** The skill tells agents not to create separate files for PBTs. Keep this consistent.
 - **hegel-review mirrors the bench idiom rubric.** When the benchmark's rubric/checklist.json gains a bench-context item, consider mirroring it here (and vice versa).
