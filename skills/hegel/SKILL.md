@@ -24,11 +24,11 @@ Ground every property in evidence — documented contracts, names and signatures
 
 Short, specific guides in this skill's `techniques/` directory. Load one when you reach that stage, when you are stuck, or when a result surprises you:
 
-- `techniques/surfaces.md` — choosing what to test
+- `techniques/surfaces.md` — choosing what to test: the full public API, sibling entry points, every instantiation
 - `techniques/directions.md` — properties in the accept and the reject direction
 - `techniques/generators.md` — generators: full domains, hostile inputs, targeted subsets
 - `techniques/scale.md` — the scale probe for recursion and complexity bugs
 - `techniques/running.md` — case counts and run configuration
 - `techniques/triage.md` — investigating failures and reporting honestly
 
-Before stopping, walk your surface list (from `techniques/surfaces.md`) and check each surface against this whole menu; anything unchecked gets a stated reason. Then review what you wrote against the `hegel-review` checklist.
+Before stopping, re-check your surface list (from `techniques/surfaces.md`) against the library's public API index: every public module, and every sibling entry point and instantiation of a surface you tested, gets a test or a stated reason. Then check each tested surface against this whole menu — anything unchecked gets a stated reason — and review what you wrote against the `hegel-review` checklist.
