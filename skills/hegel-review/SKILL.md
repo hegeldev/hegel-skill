@@ -11,12 +11,12 @@ description: >
 
 Check every test against this list. When a check fails, quote the offending code and give the smallest change that fixes it.
 
-1. **Narrowed generators**: drawn domains trimmed to dodge failures — ranges shrunk, characters filtered, sizes capped in the domain rather than at materialization, or a whole value class (subnormals, tiny magnitudes, exact bounds) excluded after it failed there, with or without an explanatory comment. The domain should be as wide as the contract.
+1. **Narrowed generators**: drawn domains trimmed to dodge failures — ranges shrunk, characters filtered, sizes capped in the domain rather than at materialization. The domain should be as wide as the contract.
 2. **Fixed inputs in property clothing**: a "property" that only ever sees one value or a few hand-picked cases.
 3. **Missing direction**: a parser or validator tested only on valid input; or invalid input checked only for "doesn't crash" when rejection should be asserted.
 4. **More than one property per test**: assertions about unrelated contracts sharing one test and one failure signal.
 5. **Evidence-free properties**: asserting behavior nothing documents or implies, or restating the implementation instead of a contract.
-6. **Tolerance hacks**: an epsilon widened until the test passes; approximate equality where the contract is exact. Equality, ordering, and hashing laws, exact roundtrips, and endpoint or identity claims (ratio 0 or 1 returning an endpoint) are exact contracts; a failed check on one dismissed as "a precision limitation", or a tolerance added after a failure was observed with no ledger note grounding it in the contract, is this hack applied during triage.
+6. **Tolerance hacks**: an epsilon widened until the test passes; approximate equality where the contract is exact.
 7. **Weakened oracles**: asserting only `is_ok()`, only a length, or only "doesn't panic" where the actual value could be checked cheaply.
 8. **`should_panic` or ignored tests**: tests that pass while the bug is present, or are excluded from the default run.
 9. **Config parameters fixed**: constructor and configuration knobs pinned to defaults instead of generated.
