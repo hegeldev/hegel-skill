@@ -1,21 +1,9 @@
 # hegel-skill
 
 An [Agent Skill](https://agentskills.io/home) that teaches agents how to write property-based tests using [Hegel](https://hegel.dev/).
+The skill should be language agnostic and work with any Hegel implementation. It may even be useful for other property-based testing libraries, but this has not been validated.
 
-When you ask an agent to write property-based tests, this skill provides:
-
-- A methodology for identifying testable properties from code evidence
-- Generator discipline guidelines to avoid over-constraining inputs
-- Language-specific API references and idiomatic patterns
-- Guidance on evolving existing unit tests into property-based tests
-
-Supported hegel libraries:
-* [hegel-rust](https://github.com/hegeldev/hegel-rust)
-* [hegel-go](https://github.com/hegeldev/hegel-go)
-* [hegel-cpp](https://github.com/hegeldev/hegel-cpp)
-* [hegel-typescript](https://github.com/hegeldev/hegel-typescript)
-* [hegel-java](https://github.com/hegeldev/hegel-java)
-* [hegel-ocaml](https://github.com/hegeldev/hegel-ocaml)
+When you ask an agent to write property-based tests, this skill provides guidance on how to identify things to test and validate the tests written.
 
 ## Installation
 
