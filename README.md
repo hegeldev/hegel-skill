@@ -4,10 +4,11 @@ An [Agent Skill](https://agentskills.io/home) that teaches agents how to write p
 
 When you ask an agent to write property-based tests, this skill provides:
 
-- A methodology for identifying testable properties from code evidence
-- Generator discipline guidelines to avoid over-constraining inputs
-- Language-specific API references and idiomatic patterns
-- Guidance on evolving existing unit tests into property-based tests
+- A small core: ground every property in evidence, learn the API from the project's own tests, docs, and library source
+- A menu of technique guides loaded on demand: choosing surfaces, testing both directions, generator breadth, the scale probe, case counts, and failure triage
+- A pre-stop coverage walk that checks every surface against the whole menu
+
+It ships with a second skill, `hegel-review`: a twelve-point checklist of the failure modes that make property-based tests weak or misleading, applied to tests after they are written (whether or not they use hegel).
 
 Supported hegel libraries:
 * [hegel-rust](https://github.com/hegeldev/hegel-rust)
