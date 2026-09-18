@@ -25,7 +25,7 @@ Ground every property in evidence — documented contracts, names and signatures
 Short, specific guides in this skill's `techniques/` directory. Load one when you reach that stage, when you are stuck, or when a result surprises you:
 
 - `techniques/surfaces.md` — choosing what to test: the full public API, sibling entry points, every instantiation
-- `techniques/directions.md` — properties in the accept and the reject direction
+- `techniques/directions.md` — accept- and reject-direction properties; oracles that pin values, not just validity
 - `techniques/generators.md` — generators: full domains, hostile inputs, targeted subsets
 - `techniques/scale.md` — the scale probe for recursion and complexity bugs
 - `techniques/running.md` — case counts and run configuration
