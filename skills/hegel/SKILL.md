@@ -30,5 +30,14 @@ Short, specific guides in this skill's `techniques/` directory. Load one when yo
 - `techniques/scale.md` — the scale probe for recursion and complexity bugs
 - `techniques/running.md` — case counts and run configuration
 - `techniques/triage.md` — investigating failures and reporting honestly
+- `techniques/adversarial-review.md` — before finishing, a subagent reviews the code for missing properties you cannot see
 
-Before stopping, re-check your surface list (from `techniques/surfaces.md`) against the library's public API index: every public module, and every sibling entry point and instantiation of a surface you tested, gets a test or a stated reason. Then check each tested surface against this whole menu — anything unchecked gets a stated reason — and review what you wrote against the `hegel-review` checklist.
+## Before you finish
+
+Three steps, each required; skipping one leaves the job undone.
+
+1. **Surface coverage.** Re-check your surface list (`techniques/surfaces.md`) against the library's public API index: every public module, and every sibling entry point and instantiation of a surface you tested, gets a test or a stated reason. Then check each tested surface against the technique menu above — anything unchecked gets a stated reason.
+
+2. **Adversarial review by a subagent — required, not optional.** Launch a *separate* subagent (the Task tool, or your harness's equivalent) to find the properties you missed. Give it the implementation and the contract it must meet (doc comments, README, signatures) but **not your tests** — a reviewer holding your tests inherits your blind spots, which is the whole point of using a fresh agent. Tell it to assume the code is wrong until shown otherwise and to return the properties the contract implies (roundtrips, invariants, agreement between equivalent paths, the documented meaning of named values) and the input classes most likely to break them (empty, degenerate, boundary, maximal, malformed). Write what it returns as hegel tests, run them, and fix what they catch. You are not done until this review has run and you have acted on it. `techniques/adversarial-review.md` has the full brief.
+
+3. **Checklist.** Review what you wrote against the `hegel-review` checklist.
