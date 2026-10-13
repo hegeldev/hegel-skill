@@ -24,3 +24,4 @@ Check every test against this list. When a check fails, quote the offending code
 11. **Silent-triage residue**: commented-out asserts, deleted failing tests, TODOs hiding a red test.
 12. **Resource bounds in the wrong place**: recursion depth or collection size limited in the drawn domain instead of at materialization.
 13. **Draws that aren't load-bearing**: nothing drawn changes whether the property holds — a rejection forced by structure (`format!("={value}")` errors whatever `value` is), a fixed trigger buried in drawn noise, an invariant over fixed structure, a case-split oracle mirroring the code, or a small nameable domain. Make these plain examples, not property tests — but don't narrow a domain a real property needs (item 1).
+14. **Unused `TestCase`**: a `#[hegel::test]` that never uses its `TestCase` (`_tc`, or no `.draw`) runs one fixed assertion N times with no generated input. Always a plain `#[test]`.
