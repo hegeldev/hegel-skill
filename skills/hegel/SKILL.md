@@ -20,6 +20,8 @@ Learn the API from, in order: existing hegel tests in this repo, the library's d
 
 Ground every property in evidence — documented contracts, names and signatures, invariants the code itself asserts, existing tests. An undocumented but ordinary expectation (a round-trip, two equivalent spellings agreeing, a rescaled input giving the same answer) is evidence too: name the expectation, and when such a test fails, judge the failure by whether the behavior is defensible, not by whether anything promised it. Write one property per test, in the project's existing test files.
 
+Not every test should be a property test. If nothing the generator draws changes whether the property holds — a rejection forced by structure, a fixed case dressed in random noise, a few nameable cases — write plain examples instead. This is about test shape, not narrowing generators (`generators.md`).
+
 ## Techniques
 
 Short, specific guides in this skill's `techniques/` directory. Load one when you reach that stage, when you are stuck, or when a result surprises you:
