@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Repository Purpose
 
-This repo is the `hegel-skill` Agent Skill (distributed via the [Agent Skills](https://agentskills.io) standard). It teaches coding agents how to write property-based tests with [Hegel](https://hegel.dev) — a PBT protocol with language-specific libraries (currently Rust, Go, C++, TypeScript, Java, and OCaml), all powered by libhegel, a shared native engine based on Hypothesis and shipped by [hegel-rust](https://github.com/hegeldev/hegel-rust).
+This repo is the `hegel-skill` Agent Skill (distributed via the [Agent Skills](https://agentskills.io) standard). It teaches coding agents how to write property-based tests with [Hegel](https://hegel.dev) — a PBT protocol with language-specific libraries (currently Rust, Go, C++, TypeScript, Java, and OCaml), all powered by libhegel, a shared native engine based on Hypothesis and developed in the [hegeldev/hegel](https://github.com/hegeldev/hegel) monorepo alongside the libraries.
 
 This repo is **content, not code**: there is no build, test, or lint step. Edits here directly change agent behavior, so wording and structure matter.
 
